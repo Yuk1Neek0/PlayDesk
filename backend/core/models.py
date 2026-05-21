@@ -10,7 +10,7 @@ from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import RangeOperators
 from django.db import models
 from django.db.models.expressions import Func, Value
-from pgvector.django import VectorField
+from pgvector.django import HnswIndex, VectorField
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +205,25 @@ class KnowledgeChunk(models.Model):
 
     class Meta:
         ordering = ["category", "source"]
+        indexes = [
+            # HNSW index for fast approximate nearest-neighbour search using cosine distance.
+            # Requires pgvector >= 0.5.0.
+            #
+            # IVFFlat fallback (for older pgvector): replace HnswIndex with:
+            #   IVFFlat(
+            #       name="knowledge_chunk_embedding_ivfflat",
+            #       fields=["embedding"],
+            #       opclasses=["vector_cosine_ops"],
+            #       lists=100,   # tune to sqrt(n_rows)
+            #   )
+            HnswIndex(
+                name="knowledge_chunk_embedding_hnsw",
+                fields=["embedding"],
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_cosine_ops"],
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"Chunk {self.pk} [{self.category}]"
