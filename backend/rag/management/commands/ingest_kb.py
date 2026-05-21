@@ -50,7 +50,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        kb_dir: Path = options["kb_dir"]
+        # call_command() bypasses argparse type coercion, so kb_dir may be a str.
+        kb_dir = Path(options["kb_dir"])
         batch_size: int = options["batch_size"]
 
         if not kb_dir.is_dir():

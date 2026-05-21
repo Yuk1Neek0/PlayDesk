@@ -135,7 +135,8 @@ class TestStreamMessage:
 
         assert response.status_code == 200
         assert "text/event-stream" in response.get("Content-Type", "")
-        return _parse_sse(response.content)
+        # StreamingHttpResponse exposes streaming_content, not content.
+        return _parse_sse(b"".join(response.streaming_content))
 
     def test_plain_text_stream(self, client, conversation):
         fake = FakeLLMClient([_make_text_response("Hello from the agent!")])

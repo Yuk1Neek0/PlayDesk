@@ -34,12 +34,27 @@ def conversation(db):
     )
 
 
+@pytest.fixture()
+def booking_resource(db):
+    """A bookable PS5 console resource for the booking-scenario tests."""
+    from core.models import Resource, Store
+
+    store = Store.objects.create(name="PlayDesk Test Lounge", timezone="UTC", business_hours={})
+    return Resource.objects.create(
+        store=store,
+        type="console",
+        name="PS5 Station 1",
+        capacity=4,
+        price_per_hour="58.00",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
 
 
-def _booking_script() -> list[LLMResponse]:
+def _booking_script(resource_id: int = 1) -> list[LLMResponse]:
     """
     Scripted LLM responses that simulate a complete booking flow:
     1. get_resource_details to find a PS5 console
@@ -85,7 +100,7 @@ def _booking_script() -> list[LLMResponse]:
                     "tc_create_booking",
                     "create_booking",
                     {
-                        "resource_id": 1,
+                        "resource_id": resource_id,
                         "start_time": datetime(2026, 5, 23, 20, 0, tzinfo=UTC).isoformat(),
                         "duration_minutes": 120,
                         "customer_name": "Alice",
@@ -113,7 +128,7 @@ def _booking_script() -> list[LLMResponse]:
 
 
 class TestBookingScenario:
-    def test_saturday_ps5_booking_completes(self, conversation):
+    def test_saturday_ps5_booking_completes(self, conversation, booking_resource):
         """
         "Saturday 8pm, PS5 for 3, ~2 hours" → agent completes a booking.
 
@@ -124,13 +139,14 @@ class TestBookingScenario:
           - booking_id is set in the result
         """
         events: list[tuple] = []
-        fake = FakeLLMClient(_booking_script())
+        fake = FakeLLMClient(_booking_script(booking_resource.pk))
         loop = AgentLoop(llm_client=fake, event_callback=lambda t, p: events.append((t, p)))
 
         result = loop.run(conversation, "Saturday 8pm, PS5 for 3, around 2 hours")
 
-        # booking_id should be extracted from create_booking result
-        assert result["booking_id"] == 1001
+        # booking_id is extracted from the create_booking tool result
+        assert result["booking_id"] is not None
+        assert isinstance(result["booking_id"], int)
 
         # check_availability and create_booking must have been called
         tool_starts = [e[1]["tool_name"] for e in events if e[0] == "tool_call_start"]
