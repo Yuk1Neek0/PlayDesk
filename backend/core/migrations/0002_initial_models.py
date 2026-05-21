@@ -24,7 +24,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Store",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("name", models.CharField(max_length=200)),
                 ("timezone", models.CharField(default="UTC", max_length=64)),
                 ("business_hours", models.JSONField(default=dict)),
@@ -35,7 +43,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Resource",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 (
                     "store",
                     models.ForeignKey(
@@ -62,7 +78,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="GameMenu",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 (
                     "resource",
                     models.ForeignKey(
@@ -81,7 +105,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Conversation",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("customer_identifier", models.CharField(max_length=255)),
                 ("started_at", models.DateTimeField(auto_now_add=True)),
                 (
@@ -103,7 +135,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Booking",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 (
                     "resource",
                     models.ForeignKey(
@@ -155,7 +195,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Message",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 (
                     "conversation",
                     models.ForeignKey(
@@ -185,7 +233,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="KnowledgeChunk",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("content", models.TextField()),
                 ("embedding", pgvector.django.VectorField(dimensions=1536)),
                 ("category", models.CharField(max_length=100)),
