@@ -1,0 +1,827 @@
+openapi: "3.1.0"
+info:
+  title: PlayDesk API
+  version: "1.0.0"
+  description: |
+    AI-powered booking and front-desk platform for game lounges.
+    Covers PS5 / Switch / board-game tables / private rooms.
+
+    **Streaming:** The `POST /api/conversations/{id}/messages` endpoint
+    returns `text/event-stream` (SSE). See `sse-protocol.md` for event shapes.
+
+    **TypeScript types:** Run the following command to generate types from this spec:
+    ```
+    npx openapi-typescript docs/contracts/openapi.yaml -o frontend/src/types/api.d.ts
+    ```
+
+    **Authentication:** Admin endpoints require `Authorization: Bearer <token>`.
+    All customer-facing endpoints use session-based auth or an anonymous session ID.
+  license:
+    name: MIT
+    identifier: MIT
+
+servers:
+  - url: http://127.0.0.1:8000
+    description: Local development
+
+tags:
+  - name: resources
+    description: Game consoles, private rooms, and table resources
+  - name: bookings
+    description: Booking lifecycle management
+  - name: conversations
+    description: AI front-desk chat conversations
+  - name: admin
+    description: Staff-only views
+
+security:
+  - bearerAuth: []
+  - sessionAuth: []
+
+paths:
+
+  # ── Resources ─────────────────────────────────────────────────────────────
+
+  /api/resources:
+    get:
+      operationId: listResources
+      summary: List all resources
+      description: Returns every resource in the store. Filter by `type` to narrow results.
+      tags: [resources]
+      security:
+        - bearerAuth: []
+        - sessionAuth: []
+      parameters:
+        - name: type
+          in: query
+          required: false
+          description: Filter by resource type
+          schema:
+            $ref: "#/components/schemas/ResourceType"
+        - name: store_id
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Paginated list of resources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResources"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/resources/{id}:
+    get:
+      operationId: getResource
+      summary: Retrieve a single resource
+      tags: [resources]
+      security:
+        - bearerAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Resource detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resource"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/resources/{id}/availability:
+    get:
+      operationId: getResourceAvailability
+      summary: Get open slots for a resource on a given date
+      description: |
+        Computes open time slots from business hours minus existing bookings.
+        Returns both confirmed-free slots (`available`) and suggested nearby slots
+        when the requested time is taken (`suggestions`).
+      tags: [resources]
+      security:
+        - bearerAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - name: date
+          in: query
+          required: true
+          description: Date to check in YYYY-MM-DD format (store's local timezone)
+          schema:
+            type: string
+            format: date
+            example: "2026-06-01"
+      responses:
+        "200":
+          description: Availability result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Bookings ───────────────────────────────────────────────────────────────
+
+  /api/bookings:
+    get:
+      operationId: listBookings
+      summary: List bookings
+      tags: [bookings]
+      security:
+        - bearerAuth: []
+        - sessionAuth: []
+      parameters:
+        - name: resource_id
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/BookingStatus"
+        - name: date
+          in: query
+          required: false
+          description: Filter by start-time date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: source
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/BookingSource"
+      responses:
+        "200":
+          description: List of bookings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedBookings"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+    post:
+      operationId: createBooking
+      summary: Create a booking
+      description: |
+        Creates a new booking. The database enforces overlap prevention with
+        `EXCLUDE USING gist(resource_id WITH =, tstzrange(start_time, end_time) WITH &&)`.
+        Returns `409` when a concurrent request claims the same slot.
+      tags: [bookings]
+      security:
+        - bearerAuth: []
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingCreate"
+      responses:
+        "201":
+          description: Booking created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Time slot already booked (DB-level overlap rejection)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConflictError"
+
+  /api/bookings/{id}:
+    get:
+      operationId: getBooking
+      summary: Retrieve a single booking
+      tags: [bookings]
+      security:
+        - bearerAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Booking detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      operationId: updateBooking
+      summary: Partially update a booking
+      description: |
+        Modify start/end time or status. Overlap rules still apply when time is changed;
+        returns `409` on conflict.
+      tags: [bookings]
+      security:
+        - bearerAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingPatch"
+      responses:
+        "200":
+          description: Updated booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Updated time conflicts with an existing booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConflictError"
+
+    delete:
+      operationId: deleteBooking
+      summary: Cancel / delete a booking
+      tags: [bookings]
+      security:
+        - bearerAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "204":
+          description: Booking deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Conversations ──────────────────────────────────────────────────────────
+
+  /api/conversations:
+    post:
+      operationId: createConversation
+      summary: Start a new AI conversation session
+      tags: [conversations]
+      security:
+        - bearerAuth: []
+        - sessionAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationCreate"
+      responses:
+        "201":
+          description: Conversation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/conversations/{id}:
+    get:
+      operationId: getConversation
+      summary: Retrieve conversation with message history
+      tags: [conversations]
+      security:
+        - bearerAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Conversation detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/conversations/{id}/messages:
+    post:
+      operationId: sendMessage
+      summary: Send a user message and stream the assistant response
+      description: |
+        Accepts a user message and kicks off the agent loop. The response is
+        a **Server-Sent Events** stream (`text/event-stream`).
+
+        See `sse-protocol.md` for the full event-type reference.
+
+        The stream ends with a `done` event containing the final
+        `booking_id` (if a booking was created) and the complete assistant text.
+      tags: [conversations]
+      security:
+        - bearerAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageCreate"
+      responses:
+        "200":
+          description: SSE stream of assistant events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Newline-delimited SSE events. Each event is one of:
+                  `token`, `tool_call_start`, `tool_call_end`, `done`, `error`.
+                  See sse-protocol.md for full payload shapes.
+              example: |
+                event: token
+                data: {"delta":"Sure"}
+
+                event: done
+                data: {"message_id":42,"booking_id":null,"text":"Sure!"}
+
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Admin ──────────────────────────────────────────────────────────────────
+
+  /api/admin/conversations:
+    get:
+      operationId: adminListConversations
+      summary: "[Staff] List all conversations"
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, closed]
+        - name: ordering
+          in: query
+          required: false
+          schema:
+            type: string
+            example: "-started_at"
+      responses:
+        "200":
+          description: Paginated conversations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedConversations"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/admin/bookings:
+    get:
+      operationId: adminListBookings
+      summary: "[Staff] List all bookings sorted by created_at desc"
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/BookingStatus"
+        - name: resource_id
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Paginated bookings (newest first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedBookings"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+# ── Components ──────────────────────────────────────────────────────────────
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Staff / admin JWT token
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+      description: Django session cookie for customer-facing endpoints
+
+  parameters:
+    PathId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+    ValidationError:
+      description: Request body failed validation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrors"
+    Forbidden:
+      description: Staff authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+
+  schemas:
+
+    # ── Enums ────────────────────────────────────────────────────────────────
+
+    ResourceType:
+      type: string
+      enum: [console, room, table]
+      description: |
+        - `console` — a dedicated gaming console station (PS5 / Switch)
+        - `room`    — a private room with console(s) and seating
+        - `table`   — a board-game table
+
+    BookingStatus:
+      type: string
+      enum: [pending, pending_payment, confirmed, cancelled]
+      description: |
+        - `pending`         — created, awaiting confirmation
+        - `pending_payment` — Stripe Checkout session opened; expires after TTL
+        - `confirmed`       — payment received / manually confirmed
+        - `cancelled`       — cancelled by customer or staff
+
+    BookingSource:
+      type: string
+      enum: [manual, agent]
+      description: Whether the booking was made through the manual form or the AI agent
+
+    # ── Resource ─────────────────────────────────────────────────────────────
+
+    Resource:
+      type: object
+      required: [id, store_id, type, name, capacity, price_per_hour]
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        store_id:
+          type: integer
+        type:
+          $ref: "#/components/schemas/ResourceType"
+        name:
+          type: string
+          example: "PS5 Station A"
+        capacity:
+          type: integer
+          minimum: 1
+          example: 4
+        price_per_hour:
+          type: string
+          format: decimal
+          example: "58.00"
+          description: CNY per hour, stored as a decimal string to avoid float rounding
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Freeform JSON — controller count, included peripherals, etc.
+          example:
+            controller_count: 2
+            has_vr: false
+            titles: ["Elden Ring", "FIFA 25"]
+
+    PaginatedResources:
+      type: object
+      required: [count, results]
+      properties:
+        count:
+          type: integer
+        next:
+          type: ["string", "null"]
+          format: uri
+        previous:
+          type: ["string", "null"]
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/Resource"
+
+    # ── Availability ─────────────────────────────────────────────────────────
+
+    TimeSlot:
+      type: object
+      required: [start, end]
+      properties:
+        start:
+          type: string
+          format: date-time
+          example: "2026-06-01T14:00:00+08:00"
+        end:
+          type: string
+          format: date-time
+          example: "2026-06-01T16:00:00+08:00"
+
+    AvailabilityResponse:
+      type: object
+      required: [resource_id, date, available, suggestions]
+      properties:
+        resource_id:
+          type: integer
+        date:
+          type: string
+          format: date
+          example: "2026-06-01"
+        available:
+          type: array
+          description: Confirmed-free continuous time blocks for the requested date
+          items:
+            $ref: "#/components/schemas/TimeSlot"
+        suggestions:
+          type: array
+          description: |
+            Nearby alternative slots when the caller's requested time is taken
+            (same day ±1 h; same time next available day). Empty when `available`
+            covers the entire requested window.
+          items:
+            $ref: "#/components/schemas/TimeSlot"
+
+    # ── Booking ───────────────────────────────────────────────────────────────
+
+    Booking:
+      type: object
+      required:
+        - id
+        - resource_id
+        - customer_name
+        - customer_phone
+        - start_time
+        - end_time
+        - status
+        - source
+        - created_at
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        resource_id:
+          type: integer
+        conversation_id:
+          type: ["integer", "null"]
+          description: Set when the booking was created by the AI agent
+        customer_name:
+          type: string
+          example: "Alice Wang"
+        customer_phone:
+          type: string
+          example: "+86-138-0000-0000"
+        start_time:
+          type: string
+          format: date-time
+          example: "2026-06-01T20:00:00+08:00"
+        end_time:
+          type: string
+          format: date-time
+          example: "2026-06-01T22:00:00+08:00"
+        status:
+          $ref: "#/components/schemas/BookingStatus"
+        source:
+          $ref: "#/components/schemas/BookingSource"
+        stripe_session_id:
+          type: ["string", "null"]
+          description: Stripe Checkout session ID (populated when status=pending_payment)
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    BookingCreate:
+      type: object
+      required:
+        - resource_id
+        - customer_name
+        - customer_phone
+        - start_time
+        - end_time
+      properties:
+        resource_id:
+          type: integer
+        conversation_id:
+          type: ["integer", "null"]
+        customer_name:
+          type: string
+        customer_phone:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        source:
+          $ref: "#/components/schemas/BookingSource"
+
+    BookingPatch:
+      type: object
+      description: All fields optional; only supplied fields are updated.
+      properties:
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        status:
+          $ref: "#/components/schemas/BookingStatus"
+        customer_name:
+          type: string
+        customer_phone:
+          type: string
+
+    PaginatedBookings:
+      type: object
+      required: [count, results]
+      properties:
+        count:
+          type: integer
+        next:
+          type: ["string", "null"]
+          format: uri
+        previous:
+          type: ["string", "null"]
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/Booking"
+
+    # ── Conversations & Messages ──────────────────────────────────────────────
+
+    Conversation:
+      type: object
+      required: [id, customer_identifier, started_at, status]
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        customer_identifier:
+          type: string
+          description: Browser fingerprint, session token, or phone number
+        started_at:
+          type: string
+          format: date-time
+          readOnly: true
+        status:
+          type: string
+          enum: [active, closed]
+
+    ConversationCreate:
+      type: object
+      properties:
+        customer_identifier:
+          type: string
+          description: Optional; server generates a UUID if omitted
+
+    ConversationDetail:
+      allOf:
+        - $ref: "#/components/schemas/Conversation"
+        - type: object
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: "#/components/schemas/Message"
+
+    Message:
+      type: object
+      required: [id, conversation_id, role, content, created_at]
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        conversation_id:
+          type: integer
+        role:
+          type: string
+          enum: [user, assistant, tool]
+        content:
+          type: string
+        tool_call_data:
+          type: ["object", "null"]
+          description: Serialized tool call request + result (JSONB in the DB)
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    MessageCreate:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          example: "I'd like to book PS5 Station A on Saturday 8 pm for 2 hours"
+
+    PaginatedConversations:
+      type: object
+      required: [count, results]
+      properties:
+        count:
+          type: integer
+        next:
+          type: ["string", "null"]
+          format: uri
+        previous:
+          type: ["string", "null"]
+          format: uri
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/Conversation"
+
+    # ── Errors ────────────────────────────────────────────────────────────────
+
+    ErrorDetail:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+          example: "Not found."
+
+    ValidationErrors:
+      type: object
+      description: |
+        DRF-style validation error map. Keys are field names; values are arrays of
+        error strings. A `non_field_errors` key carries form-level errors.
+      additionalProperties:
+        type: array
+        items:
+          type: string
+      example:
+        start_time: ["This field is required."]
+        end_time: ["end_time must be after start_time."]
+
+    ConflictError:
+      type: object
+      required: [detail, conflicting_booking_id]
+      properties:
+        detail:
+          type: string
+          example: "The requested time slot is already booked."
+        conflicting_booking_id:
+          type: ["integer", "null"]
+          description: ID of the booking that occupies the slot, if known
+        suggestions:
+          type: array
+          description: Alternative slots from conflict-aware suggestion logic
+          items:
+            $ref: "#/components/schemas/TimeSlot"

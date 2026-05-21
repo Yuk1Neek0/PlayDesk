@@ -1,0 +1,159 @@
+[
+  {
+    "model": "core.store",
+    "pk": 1,
+    "fields": {
+      "name": "PlayDesk Flagship",
+      "timezone": "Asia/Shanghai",
+      "business_hours": {
+        "mon": {"open": "10:00", "close": "22:00"},
+        "tue": {"open": "10:00", "close": "22:00"},
+        "wed": {"open": "10:00", "close": "22:00"},
+        "thu": {"open": "10:00", "close": "22:00"},
+        "fri": {"open": "10:00", "close": "23:00"},
+        "sat": {"open": "09:00", "close": "23:00"},
+        "sun": {"open": "09:00", "close": "22:00"}
+      }
+    }
+  },
+  {
+    "model": "core.resource",
+    "pk": 1,
+    "fields": {
+      "store": 1,
+      "type": "console",
+      "name": "PS5 Station 1",
+      "capacity": 4,
+      "price_per_hour": "60.00",
+      "metadata": {"controllers": 4, "display": "55-inch 4K OLED"}
+    }
+  },
+  {
+    "model": "core.resource",
+    "pk": 2,
+    "fields": {
+      "store": 1,
+      "type": "console",
+      "name": "PS5 Station 2",
+      "capacity": 4,
+      "price_per_hour": "60.00",
+      "metadata": {"controllers": 4, "display": "55-inch 4K OLED"}
+    }
+  },
+  {
+    "model": "core.resource",
+    "pk": 3,
+    "fields": {
+      "store": 1,
+      "type": "console",
+      "name": "Nintendo Switch Station",
+      "capacity": 4,
+      "price_per_hour": "40.00",
+      "metadata": {"controllers": 4, "display": "43-inch 1080p"}
+    }
+  },
+  {
+    "model": "core.resource",
+    "pk": 4,
+    "fields": {
+      "store": 1,
+      "type": "room",
+      "name": "Private Room A",
+      "capacity": 8,
+      "price_per_hour": "120.00",
+      "metadata": {"consoles": ["PS5", "Switch"], "display": "65-inch 4K"}
+    }
+  },
+  {
+    "model": "core.resource",
+    "pk": 5,
+    "fields": {
+      "store": 1,
+      "type": "table",
+      "name": "Board Game Table 1",
+      "capacity": 6,
+      "price_per_hour": "30.00",
+      "metadata": {}
+    }
+  },
+  {
+    "model": "core.gamemenu",
+    "pk": 1,
+    "fields": {
+      "resource": 1,
+      "name": "FIFA 25",
+      "platform": "PS5",
+      "max_players": 4
+    }
+  },
+  {
+    "model": "core.gamemenu",
+    "pk": 2,
+    "fields": {
+      "resource": 1,
+      "name": "NBA 2K25",
+      "platform": "PS5",
+      "max_players": 4
+    }
+  },
+  {
+    "model": "core.gamemenu",
+    "pk": 3,
+    "fields": {
+      "resource": 1,
+      "name": "Call of Duty: Black Ops 6",
+      "platform": "PS5",
+      "max_players": 4
+    }
+  },
+  {
+    "model": "core.gamemenu",
+    "pk": 4,
+    "fields": {
+      "resource": 2,
+      "name": "Gran Turismo 7",
+      "platform": "PS5",
+      "max_players": 2
+    }
+  },
+  {
+    "model": "core.gamemenu",
+    "pk": 5,
+    "fields": {
+      "resource": 2,
+      "name": "Mortal Kombat 1",
+      "platform": "PS5",
+      "max_players": 2
+    }
+  },
+  {
+    "model": "core.gamemenu",
+    "pk": 6,
+    "fields": {
+      "resource": 3,
+      "name": "Mario Kart 8 Deluxe",
+      "platform": "Switch",
+      "max_players": 4
+    }
+  },
+  {
+    "model": "core.gamemenu",
+    "pk": 7,
+    "fields": {
+      "resource": 3,
+      "name": "Super Smash Bros. Ultimate",
+      "platform": "Switch",
+      "max_players": 4
+    }
+  },
+  {
+    "model": "core.gamemenu",
+    "pk": 8,
+    "fields": {
+      "resource": 3,
+      "name": "Splatoon 3",
+      "platform": "Switch",
+      "max_players": 4
+    }
+  }
+]

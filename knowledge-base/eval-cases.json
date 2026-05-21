@@ -1,0 +1,275 @@
+[
+  {
+    "id": "eval-001",
+    "description": "Complete booking request with all required details in one message",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Book PS5 Station A on 2026-06-06 from 8pm to 10pm, name Alice Wang, phone +86-138-0000-0001"
+      }
+    ],
+    "label": "should_book",
+    "assertions": {
+      "tool_called": "create_booking",
+      "booking_created": true,
+      "final_message_contains": ["booking"]
+    },
+    "notes": "All required fields present (resource, date, start, end, name, phone). Agent should call check_availability then create_booking without clarifying."
+  },
+  {
+    "id": "eval-002",
+    "description": "Ambiguous booking — missing date",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "I want to book a PS5 at 8pm for 2 hours"
+      }
+    ],
+    "label": "should_clarify",
+    "assertions": {
+      "tool_called": null,
+      "no_booking_created": true,
+      "final_message_contains": ["date", "which"]
+    },
+    "notes": "Date is missing. Agent must ask for the date before booking."
+  },
+  {
+    "id": "eval-003",
+    "description": "Ambiguous booking — missing customer contact details",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Book PS5 Station B on Saturday 2026-06-07 at 6pm for 2 hours"
+      }
+    ],
+    "label": "should_clarify",
+    "assertions": {
+      "no_booking_created": true,
+      "final_message_contains": ["name", "phone"]
+    },
+    "notes": "Name and phone are missing. Agent must ask for contact details."
+  },
+  {
+    "id": "eval-004",
+    "description": "Policy question — outside food",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Can I bring my own snacks and drinks?"
+      }
+    ],
+    "label": "should_search_kb",
+    "assertions": {
+      "tool_called": "search_knowledge_base",
+      "no_booking_created": true,
+      "final_message_contains": ["food", "outside"]
+    },
+    "notes": "Pure policy question. Must answer from KB via search_knowledge_base, not create any booking."
+  },
+  {
+    "id": "eval-005",
+    "description": "Policy question — cancellation",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is your cancellation policy?"
+      }
+    ],
+    "label": "should_search_kb",
+    "assertions": {
+      "tool_called": "search_knowledge_base",
+      "no_booking_created": true,
+      "final_message_contains": ["24", "deposit"]
+    },
+    "notes": "Cancellation policy is in KB. Agent must retrieve and quote it."
+  },
+  {
+    "id": "eval-006",
+    "description": "Refusal — request outside business hours (3am)",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Can I book a PS5 station for 3am next Tuesday?"
+      }
+    ],
+    "label": "should_refuse",
+    "assertions": {
+      "no_booking_created": true,
+      "final_message_contains": ["hours", "open"]
+    },
+    "notes": "3am on a weekday is outside all business hours. Agent should refuse and inform of opening hours."
+  },
+  {
+    "id": "eval-007",
+    "description": "Natural-language booking with relative time ('Saturday 8pm, 2 hours')",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Saturday 8pm, PS5 for 3 people, around 2 hours. My name is Bob Liu, phone 13900000002."
+      }
+    ],
+    "label": "should_book",
+    "assertions": {
+      "tool_called": "create_booking",
+      "booking_created": true,
+      "final_message_contains": ["booking"]
+    },
+    "notes": "All fields present including party size ≤ capacity (3 ≤ 4). Agent must resolve 'Saturday' to a concrete date and complete the booking."
+  },
+  {
+    "id": "eval-008",
+    "description": "Game catalog question — available PS5 titles",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What PS5 games do you have?"
+      }
+    ],
+    "label": "should_search_kb",
+    "assertions": {
+      "tool_called": "search_knowledge_base",
+      "no_booking_created": true,
+      "final_message_contains": ["ps5", "elden"]
+    },
+    "notes": "Game catalog question. Must be answered from KB."
+  },
+  {
+    "id": "eval-009",
+    "description": "Availability check for a specific resource and time",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Is PS5 Station C free tomorrow evening from 7pm to 9pm?"
+      }
+    ],
+    "label": "should_search_kb",
+    "assertions": {
+      "tool_called": "check_availability",
+      "no_booking_created": true
+    },
+    "notes": "Structured availability query — must use check_availability tool, not RAG."
+  },
+  {
+    "id": "eval-010",
+    "description": "Complete booking in Chinese — all details provided",
+    "lang": "zh",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想预订 PS5 A 台，2026年6月7日晚上8点到10点，姓名王芳，电话13800000002"
+      }
+    ],
+    "label": "should_book",
+    "assertions": {
+      "tool_called": "create_booking",
+      "booking_created": true
+    },
+    "notes": "Complete booking in Chinese. Agent must respond in Chinese and complete booking."
+  },
+  {
+    "id": "eval-011",
+    "description": "Chinese policy question — age limit after 8pm",
+    "lang": "zh",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我家孩子今年14岁，晚上9点可以带他来玩吗？"
+      }
+    ],
+    "label": "should_search_kb",
+    "assertions": {
+      "tool_called": "search_knowledge_base",
+      "no_booking_created": true,
+      "final_message_contains": ["陪同", "16"]
+    },
+    "notes": "Age-limit policy question in Chinese. Must retrieve and explain the under-16 rule for after 8pm."
+  },
+  {
+    "id": "eval-012",
+    "description": "Private room booking for a party",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "We have 7 people and want to book a private room for a birthday party on 2026-06-14 from 6pm to 9pm. Contact: Chen Wei, 13700000003."
+      }
+    ],
+    "label": "should_book",
+    "assertions": {
+      "tool_called": "create_booking",
+      "booking_created": true,
+      "final_message_contains": ["room", "booking"]
+    },
+    "notes": "Party size 7 fits in a private room (capacity 8). Agent should suggest Room 1 or 2 and complete the booking."
+  },
+  {
+    "id": "eval-013",
+    "description": "Refusal — party size exceeds resource capacity",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "We are 10 people and want to book a single PS5 station for Saturday night."
+      }
+    ],
+    "label": "should_clarify",
+    "assertions": {
+      "no_booking_created": true,
+      "final_message_contains": ["capacity", "4"]
+    },
+    "notes": "10 people exceed PS5 station capacity (4). Agent should inform customer and suggest a private room or multiple stations."
+  },
+  {
+    "id": "eval-014",
+    "description": "Multi-turn: clarify then book",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "I want to play Switch with my friend this weekend."
+      },
+      {
+        "role": "assistant",
+        "content": "I'd love to help you book a Nintendo Switch station! Could you tell me which day (Saturday or Sunday) and what time you'd like, along with your name and phone number?"
+      },
+      {
+        "role": "user",
+        "content": "Sunday at 3pm for 2 hours. I'm Li Ming, phone 13600000004."
+      }
+    ],
+    "label": "should_book",
+    "assertions": {
+      "tool_called": "create_booking",
+      "booking_created": true,
+      "final_message_contains": ["switch", "booking"]
+    },
+    "notes": "Multi-turn conversation: first turn is ambiguous, second turn provides the missing details. Agent should complete booking on the second turn."
+  },
+  {
+    "id": "eval-015",
+    "description": "Business hours question",
+    "lang": "en",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What time do you open and close on weekends?"
+      }
+    ],
+    "label": "should_search_kb",
+    "assertions": {
+      "tool_called": "search_knowledge_base",
+      "no_booking_created": true,
+      "final_message_contains": ["10", "1"]
+    },
+    "notes": "Business hours question answered from KB. Should mention 10am open and 1am close on weekends."
+  }
+]
