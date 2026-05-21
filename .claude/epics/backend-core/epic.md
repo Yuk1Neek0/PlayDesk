@@ -4,7 +4,7 @@ status: backlog
 created: 2026-05-21T19:51:40Z
 progress: 0%
 prd: .claude/prds/backend-core.md
-github: (will be set on sync)
+github: https://github.com/Yuk1Neek0/PlayDesk/issues/16
 ---
 
 # Epic: backend-core
