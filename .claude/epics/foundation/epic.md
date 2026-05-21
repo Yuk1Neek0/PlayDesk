@@ -1,6 +1,6 @@
 ---
 name: foundation
-status: backlog
+status: in-progress
 created: 2026-05-21T19:06:21Z
 progress: 0%
 prd: .claude/prds/foundation.md
