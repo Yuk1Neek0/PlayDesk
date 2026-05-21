@@ -4,7 +4,7 @@ status: backlog
 created: 2026-05-21T19:51:40Z
 progress: 0%
 prd: .claude/prds/enhancements.md
-github: (will be set on sync)
+github: https://github.com/Yuk1Neek0/PlayDesk/issues/23
 ---
 
 # Epic: enhancements
@@ -49,3 +49,14 @@ Four independent tasks → four parallel agents, after `backend-core` merges.
 ## Estimated Effort
 
 - ~14h total; ~4h wall-clock with 4 parallel agents.
+
+## Tasks Created
+- [ ] #24 - Evaluation harness (parallel: true)
+- [ ] #25 - Stripe sandbox deposits (parallel: true)
+- [ ] #26 - Conflict-aware slot suggestions (parallel: true)
+- [ ] #27 - Bilingual retrieval (parallel: true)
+
+Total tasks: 4
+Parallel tasks: 4
+Sequential tasks: 0
+Estimated total effort: 14 hours

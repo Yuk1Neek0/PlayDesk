@@ -4,7 +4,7 @@ status: backlog
 created: 2026-05-21T19:51:40Z
 progress: 0%
 prd: .claude/prds/frontend.md
-github: (will be set on sync)
+github: https://github.com/Yuk1Neek0/PlayDesk/issues/18
 ---
 
 # Epic: frontend
@@ -50,3 +50,14 @@ A single `frontend/` stream — can run as one agent, or split per page once the
 ## Estimated Effort
 
 - ~12h total; ~6h wall-clock if split per page after the shared client lands.
+
+## Tasks Created
+- [ ] #19 - API client & SSE hook (parallel: true)
+- [ ] #20 - Manual booking page (parallel: true, depends on #19)
+- [ ] #21 - Chat page (parallel: true, depends on #19)
+- [ ] #22 - Admin dashboard (parallel: true, depends on #19)
+
+Total tasks: 4
+Parallel tasks: 4
+Sequential tasks: 0
+Estimated total effort: 12 hours
