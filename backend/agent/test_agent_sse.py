@@ -132,11 +132,13 @@ class TestStreamMessage:
                 data=json.dumps(body),
                 content_type="application/json",
             )
+            assert response.status_code == 200
+            assert "text/event-stream" in response.get("Content-Type", "")
+            # StreamingHttpResponse streams lazily — consume it INSIDE the patch
+            # context so the loop uses the mocked LLM client, not a real one.
+            raw = b"".join(response.streaming_content)
 
-        assert response.status_code == 200
-        assert "text/event-stream" in response.get("Content-Type", "")
-        # StreamingHttpResponse exposes streaming_content, not content.
-        return _parse_sse(b"".join(response.streaming_content))
+        return _parse_sse(raw)
 
     def test_plain_text_stream(self, client, conversation):
         fake = FakeLLMClient([_make_text_response("Hello from the agent!")])
