@@ -31,7 +31,7 @@ Foundation shipped `/`, `/chat`, and `/admin` as placeholder shells. They render
 
 ## Non-Functional Requirements
 
-- Tailwind defaults only; dummy auth retained.
+- Page UIs come from Claude Design (Anthropic Labs) handoff exports integrated into the repo; dummy auth retained.
 - Builds and tests pass against mocked API responses (CI has no live backend).
 - The UI stays responsive during streaming and tool-call sequences.
 

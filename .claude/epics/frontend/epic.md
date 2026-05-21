@@ -18,6 +18,7 @@ Wire the foundation's static `/`, `/chat`, and `/admin` shells to the real backe
 - **Generated API client.** TypeScript types generated from `docs/contracts/openapi.yaml`; no hand-written request/response types.
 - **Build against mocks.** Components are tested against mocked fetch/SSE so CI needs no live backend; end-to-end verification is Wave 2.
 - **SSE via a typed reader.** A small client reads the SSE protocol's event types and exposes tokens + tool-call hints to React.
+- **Page UIs from Claude Design.** The `/`, `/chat`, and `/admin` UIs are produced in Claude Design (Anthropic Labs) and exported into the repo; tasks #20–#22 wire the exported markup/components to live data rather than hand-rolling Tailwind. Task #19 (data layer) has no UI and is unaffected.
 
 ## Technical Approach
 
@@ -41,6 +42,7 @@ A single `frontend/` stream — can run as one agent, or split per page once the
 ## Dependencies
 
 - Frozen `foundation` contracts (OpenAPI, SSE). End-to-end check follows `backend-core` merge.
+- Claude Design handoff exports for the three pages — #20–#22 are blocked until the exports land in the repo. #19 has no such dependency.
 
 ## Success Criteria (Technical)
 
