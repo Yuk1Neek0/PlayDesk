@@ -1,0 +1,180 @@
+"""
+Django views for the PlayDesk agent SSE streaming endpoint.
+
+Routes (defined in agent/urls.py):
+  POST /api/conversations/              — create a conversation
+  POST /api/conversations/<id>/messages/ — send a message, stream SSE response
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Generator
+from typing import Any
+
+from django.conf import settings
+from django.http import HttpRequest, JsonResponse, StreamingHttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+
+from core.models import Conversation, ConversationStatus
+
+from .llm_client import AnthropicClient
+from .loop import AgentLoop
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _sse_event(event_type: str, payload: dict[str, Any]) -> str:
+    """Encode a single SSE event as a string."""
+    data = json.dumps(payload, default=str)
+    return f"event: {event_type}\ndata: {data}\n\n"
+
+
+def _run_agent_stream(
+    conversation: Conversation,
+    user_content: str,
+    rag_chunks: list[str],
+) -> Generator[str, None, None]:
+    """
+    Generator that drives the agent loop and yields SSE-formatted strings.
+
+    The loop emits events via callback; we collect them in a queue and yield.
+    """
+    event_queue: list[tuple[str, dict[str, Any]]] = []
+
+    def on_event(event_type: str, payload: dict[str, Any]) -> None:
+        event_queue.append((event_type, payload))
+
+    llm_client = AnthropicClient(
+        api_key=getattr(settings, "ANTHROPIC_API_KEY", ""),
+        model=getattr(settings, "ANTHROPIC_MODEL", "claude-opus-4-7"),
+    )
+    loop = AgentLoop(
+        llm_client=llm_client,
+        rag_chunks=rag_chunks,
+        event_callback=on_event,
+    )
+
+    try:
+        loop.run(conversation, user_content)
+    except RuntimeError as exc:
+        # LLM unavailable after retries — error event already emitted by loop
+        # Emit it here in case the loop raised before emitting
+        yield _sse_event(
+            "error",
+            {
+                "code": "llm_unavailable",
+                "detail": str(exc),
+                "retryable": True,
+            },
+        )
+        return
+
+    # Yield all collected events
+    for event_type, payload in event_queue:
+        yield _sse_event(event_type, payload)
+
+
+# ---------------------------------------------------------------------------
+# Conversation creation view
+# ---------------------------------------------------------------------------
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def create_conversation(request: HttpRequest) -> JsonResponse:
+    """
+    POST /api/conversations/
+
+    Body (JSON):
+        { "customer_identifier": "<string>" }   # optional, defaults to "anonymous"
+
+    Returns:
+        { "id": <int>, "status": "active", "started_at": "<iso>" }
+    """
+    try:
+        body: dict[str, Any] = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    customer_identifier = body.get("customer_identifier", "anonymous")
+    conversation = Conversation.objects.create(
+        customer_identifier=str(customer_identifier),
+        status=ConversationStatus.ACTIVE,
+    )
+    return JsonResponse(
+        {
+            "id": conversation.pk,
+            "status": conversation.status,
+            "started_at": conversation.started_at.isoformat(),
+        },
+        status=201,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Message streaming view
+# ---------------------------------------------------------------------------
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def stream_message(
+    request: HttpRequest, conversation_id: int
+) -> StreamingHttpResponse | JsonResponse:
+    """
+    POST /api/conversations/<id>/messages/
+
+    Body (JSON):
+        {
+            "content": "<user message>",
+            "rag_chunks": ["<chunk1>", ...]   # optional, injected by RAG layer
+        }
+
+    Returns a Server-Sent Events stream.
+    """
+    # Validate conversation exists
+    try:
+        conversation = Conversation.objects.get(pk=conversation_id)
+    except Conversation.DoesNotExist:
+        # Return a JSON error immediately (not SSE) since stream hasn't started
+        return JsonResponse(
+            {
+                "error": "conversation_not_found",
+                "detail": f"Conversation {conversation_id} does not exist.",
+            },
+            status=404,
+        )
+
+    # Parse body
+    try:
+        body: dict[str, Any] = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"error": "invalid_message", "detail": "Invalid JSON body."}, status=400
+        )
+
+    user_content = body.get("content", "").strip()
+    if not user_content:
+        return JsonResponse(
+            {
+                "error": "invalid_message",
+                "detail": "Field 'content' is required and must be non-empty.",
+            },
+            status=400,
+        )
+
+    rag_chunks: list[str] = body.get("rag_chunks", [])
+    if not isinstance(rag_chunks, list):
+        rag_chunks = []
+
+    response = StreamingHttpResponse(
+        _run_agent_stream(conversation, user_content, rag_chunks),
+        content_type="text/event-stream",
+    )
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
