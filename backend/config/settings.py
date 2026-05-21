@@ -47,6 +47,9 @@ INSTALLED_APPS = [
     "rest_framework",
     # Local
     "core",
+    "api",
+    "rag",
+    "agent",
 ]
 
 # ---------------------------------------------------------------------------
@@ -125,3 +128,16 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.JSONParser",
     ],
 }
+
+# ---------------------------------------------------------------------------
+# LLM / embeddings (provider clients are injectable; tests mock them)
+# ---------------------------------------------------------------------------
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", default="claude-opus-4-7")
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+EMBEDDING_MODEL = env("EMBEDDING_MODEL", default="text-embedding-3-small")
+EMBEDDING_DIMENSIONS = env.int("EMBEDDING_DIMENSIONS", default=1536)
+
+# Agent loop
+AGENT_MAX_ITERATIONS = env.int("AGENT_MAX_ITERATIONS", default=6)
+RAG_TOP_K = env.int("RAG_TOP_K", default=5)

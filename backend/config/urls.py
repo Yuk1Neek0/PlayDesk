@@ -5,5 +5,8 @@ from django.urls import include, path
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/", include("core.urls")),
+    # REST API — resources, availability, booking CRUD, admin (api app)
+    path("api/", include("api.urls")),
+    # Agent — conversation creation + SSE streaming messages (agent app)
+    path("api/", include("agent.urls")),
 ]
