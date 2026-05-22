@@ -1,9 +1,9 @@
 ---
 name: verification
-status: backlog
+status: completed
 created: 2026-05-22T12:27:10Z
-updated: 2026-05-22T12:35:59Z
-progress: 0%
+updated: 2026-05-22T13:56:49Z
+progress: 100%
 prd: .claude/prds/verification.md
 github: https://github.com/Yuk1Neek0/PlayDesk/issues/30
 ---
@@ -82,12 +82,12 @@ Each stream agent verifies its criteria, fixes failures in-stream, and writes it
 - Fix volume is unknown until the streams run — estimate scales with how far the contracts drifted.
 
 ## Tasks Created
-- [ ] #31 - Environment smoke check (parallel: false)
-- [ ] #32 - Stream A: backend REST & SSE verification (parallel: true)
-- [ ] #33 - Stream B: agent loop & RAG verification (parallel: true)
-- [ ] #34 - Stream C: frontend integration verification (parallel: true)
-- [ ] #35 - Stream D: enhancements verification (parallel: true)
-- [ ] #36 - Integration & sign-off (parallel: false)
+- [x] #31 - Environment smoke check (parallel: false)
+- [x] #32 - Stream A: backend REST & SSE verification (parallel: true)
+- [x] #33 - Stream B: agent loop & RAG verification (parallel: true)
+- [x] #34 - Stream C: frontend integration verification (parallel: true)
+- [x] #35 - Stream D: enhancements verification (parallel: true)
+- [x] #36 - Integration & sign-off (parallel: false)
 
 Total tasks: 6
 Parallel tasks: 4 (002–005, after 001)

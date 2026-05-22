@@ -8,6 +8,8 @@ RAG-vs-SQL partition rule (critical):
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 SYSTEM_PROMPT = """\
 You are the AI front-desk assistant for PlayDesk, a game lounge that offers PS5 consoles, \
 private gaming rooms, and board-game tables. Your job is to help customers check availability, \
@@ -77,3 +79,22 @@ _LANGUAGE_DIRECTIVE = {
 def language_directive(lang: str) -> str:
     """Return a system-prompt fragment instructing the agent's reply language."""
     return _LANGUAGE_DIRECTIVE.get(lang, _LANGUAGE_DIRECTIVE["en"])
+
+
+# ---------------------------------------------------------------------------
+# Current-date directive — without this the model cannot resolve relative
+# dates like "Saturday" or "tomorrow" and guesses arbitrary (often past)
+# dates, which breaks check_availability / create_booking.
+# ---------------------------------------------------------------------------
+
+
+def date_directive(now: datetime | None = None) -> str:
+    """Return a system-prompt fragment stating today's date for relative-date math."""
+    now = now or datetime.now(UTC)
+    return (
+        "\n\n## Current Date\n"
+        f"Today is {now:%A, %Y-%m-%d} (store timezone UTC). "
+        'Resolve relative dates such as "today", "tomorrow", "this Saturday", '
+        'or "next Friday" against this date. Always pass tool date arguments as '
+        "absolute YYYY-MM-DD values; never invent or guess a date."
+    )

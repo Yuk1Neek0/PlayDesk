@@ -16,6 +16,18 @@ import stripe
 from django.conf import settings
 
 
+def _stripe_configured() -> bool:
+    """
+    True only when ``STRIPE_SECRET_KEY`` holds a real key.
+
+    An empty value (CI / local dev) or the ``.env`` placeholder shipped for
+    operators to fill in (``sk_test_...``) both count as *not configured* —
+    they would only produce an ``AuthenticationError`` against the API.
+    """
+    key = settings.STRIPE_SECRET_KEY
+    return bool(key) and not key.endswith("...")
+
+
 def create_checkout_session(booking: Any) -> str | None:
     """
     Open a Stripe Checkout session (test mode) for *booking*'s deposit.
@@ -24,7 +36,7 @@ def create_checkout_session(booking: Any) -> str | None:
     flip the right booking to ``confirmed`` once payment completes. Returns
     the hosted Checkout URL, or ``None`` when Stripe is not configured.
     """
-    if not settings.STRIPE_SECRET_KEY:
+    if not _stripe_configured():
         return None
 
     stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -58,8 +70,15 @@ def verify_webhook_event(payload: bytes, signature: str) -> dict:
 
     Raises ``ValueError`` when the signature or payload is invalid — any
     failure means the request must be rejected.
+
+    The result is a plain ``dict``: ``stripe.Webhook.construct_event`` returns
+    a ``StripeObject`` (stripe-python 15.x), which does *not* support ``.get``;
+    callers — and the test suite — consume the event as a mapping.
     """
     try:
-        return stripe.Webhook.construct_event(payload, signature, settings.STRIPE_WEBHOOK_SECRET)
+        event = stripe.Webhook.construct_event(payload, signature, settings.STRIPE_WEBHOOK_SECRET)
     except Exception as exc:  # noqa: BLE001
         raise ValueError(f"Invalid Stripe webhook: {exc}") from exc
+    # StripeObject -> plain (recursive) dict; already a dict in tests/mocks.
+    to_dict = getattr(event, "to_dict", None)
+    return to_dict() if callable(to_dict) else dict(event)

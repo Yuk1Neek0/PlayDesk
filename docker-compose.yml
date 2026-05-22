@@ -35,8 +35,11 @@ services:
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     volumes:
       - ./backend:/app
+      - ./knowledge-base:/knowledge-base:ro
     ports:
       - "8000:8000"
     depends_on:
@@ -45,16 +48,23 @@ services:
     command: >
       sh -c "python manage.py migrate &&
              python manage.py seed_data &&
+             python manage.py ingest_kb &&
              python manage.py runserver 0.0.0.0:8000"
 
   # -------------------------------------------------------------------------
   # Next.js frontend  (Dockerfile created by the frontend agent)
   # -------------------------------------------------------------------------
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # `rewrites()` bakes the proxy target at build time.
+        BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:8000}
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      # Server-side target for the Next.js `/api/*` rewrite proxy.
+      BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:8000}
     ports:
       - "3000:3000"
     depends_on:
