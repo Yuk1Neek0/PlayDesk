@@ -256,6 +256,41 @@ class TestCheckAvailability:
         out = check_availability(inp)
         assert isinstance(out.suggestions, list)
 
+    def test_suggestions_offered_when_fully_booked(self, confirmed_booking):
+        # The only console is booked 20:00–22:00; the same window has no
+        # availability, so the tool should offer bookable alternatives.
+        from agent_tools.schemas import CheckAvailabilityInput
+        from agent_tools.tools import check_availability
+
+        inp = CheckAvailabilityInput(
+            resource_type="console",
+            date="2026-06-01",
+            time_range=("20:00", "22:00"),
+            party_size=1,
+        )
+        out = check_availability(inp)
+        assert out.available == []
+        assert 1 <= len(out.suggestions) <= 2
+        # Every suggested window must itself be free of the existing booking.
+        booked_start = confirmed_booking.start_time
+        booked_end = confirmed_booking.end_time
+        for slot in out.suggestions:
+            assert slot.end <= booked_start or slot.start >= booked_end
+
+    def test_no_suggestions_when_requested_slot_is_free(self, resource):
+        from agent_tools.schemas import CheckAvailabilityInput
+        from agent_tools.tools import check_availability
+
+        inp = CheckAvailabilityInput(
+            resource_type="console",
+            date="2026-06-01",
+            time_range=("10:00", "12:00"),
+            party_size=2,
+        )
+        out = check_availability(inp)
+        assert len(out.available) >= 1
+        assert out.suggestions == []
+
 
 # ---------------------------------------------------------------------------
 # Tool 3 — get_resource_details
