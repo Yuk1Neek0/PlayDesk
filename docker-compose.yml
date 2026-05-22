@@ -35,6 +35,8 @@ services:
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     volumes:
       - ./backend:/app
       - ./knowledge-base:/knowledge-base:ro
