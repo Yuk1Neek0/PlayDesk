@@ -34,8 +34,10 @@ class Command(BaseCommand):
     help = "Ingest knowledge-base JSONL files into KnowledgeChunk (idempotent)."
 
     def add_arguments(self, parser):
-        # Default KB dir: two levels up from manage.py → project root / knowledge-base
-        default_kb_dir = Path(__file__).resolve().parents[6] / "knowledge-base"
+        # Default KB dir: the repo's knowledge-base/ directory. This file is
+        # backend/rag/management/commands/ingest_kb.py, so the repo root is
+        # parents[4] (commands → management → rag → backend → repo root).
+        default_kb_dir = Path(__file__).resolve().parents[4] / "knowledge-base"
         parser.add_argument(
             "--kb-dir",
             type=Path,
