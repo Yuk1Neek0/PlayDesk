@@ -141,3 +141,13 @@ EMBEDDING_DIMENSIONS = env.int("EMBEDDING_DIMENSIONS", default=1536)
 # Agent loop
 AGENT_MAX_ITERATIONS = env.int("AGENT_MAX_ITERATIONS", default=6)
 RAG_TOP_K = env.int("RAG_TOP_K", default=5)
+
+# ---------------------------------------------------------------------------
+# Stripe — test-mode booking deposits (enhancements epic)
+# ---------------------------------------------------------------------------
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
+STRIPE_SUCCESS_URL = env("STRIPE_SUCCESS_URL", default="http://localhost:3000/?payment=success")
+STRIPE_CANCEL_URL = env("STRIPE_CANCEL_URL", default="http://localhost:3000/?payment=cancelled")
+# How long an unpaid pending_payment hold survives before expire_holds reaps it.
+STRIPE_HOLD_MINUTES = env.int("STRIPE_HOLD_MINUTES", default=10)

@@ -260,7 +260,11 @@ def get_resource_details(inp: GetResourceDetailsInput) -> GetResourceDetailsOutp
 
 def create_booking(inp: CreateBookingInput) -> CreateBookingOutput:
     """
-    Create a Booking row.
+    Create a Booking row in `pending_payment` and open a Stripe deposit hold.
+
+    The booking is created as `pending_payment`; a Stripe Checkout session
+    (test mode) is opened for the deposit and the webhook flips it to
+    `confirmed` once paid. Unpaid holds are reaped by the expire_holds command.
 
     Returns CreateBookingSuccess on success.
     Returns BookingConflictError if the DB EXCLUDE constraint fires (overlap).
@@ -275,7 +279,7 @@ def create_booking(inp: CreateBookingInput) -> CreateBookingOutput:
                 resource_name="PS5 Station 1",
                 start_time=start,
                 end_time=end,
-                status="confirmed",
+                status="pending_payment",
             )
         )
 
@@ -301,9 +305,17 @@ def create_booking(inp: CreateBookingInput) -> CreateBookingOutput:
             customer_phone=inp.customer_phone,
             start_time=inp.start_time,
             end_time=end_time,
-            status=BookingStatus.CONFIRMED,
+            status=BookingStatus.PENDING_PAYMENT,
             source=BookingSource.AGENT,
         )
+        # Open a Stripe Checkout deposit session (test mode). A failure here
+        # leaves the booking in pending_payment for expire_holds to reap.
+        try:
+            from core.payments import create_checkout_session
+
+            create_checkout_session(booking)
+        except Exception:  # noqa: BLE001
+            pass
         return CreateBookingOutput(
             result=CreateBookingSuccess(
                 booking_id=booking.pk,

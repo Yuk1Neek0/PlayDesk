@@ -22,6 +22,7 @@ from .views import (
     ResourceAvailabilityView,
     ResourceDetailView,
     ResourceListView,
+    stripe_webhook,
 )
 
 app_name = "api"
@@ -56,4 +57,6 @@ urlpatterns = [
         AdminBookingListView.as_view(),
         name="admin-booking-list",
     ),
+    # Stripe webhook — confirms a booking when its deposit is paid
+    path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"),
 ]

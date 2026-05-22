@@ -20,6 +20,9 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 from django.db import IntegrityError
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import (
@@ -386,3 +389,40 @@ class AdminBookingListView(ListAPIView):
             qs = qs.filter(start_time__gte=day_start, start_time__lt=day_end)
 
         return qs
+
+
+# ---------------------------------------------------------------------------
+# Stripe webhook (enhancements epic)
+# ---------------------------------------------------------------------------
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def stripe_webhook(request):
+    """
+    POST /api/webhooks/stripe/
+
+    Confirms a booking when its Stripe deposit is paid. On a verified
+    `checkout.session.completed` event, the booking carried in the session
+    metadata is flipped pending_payment → confirmed. Idempotent: a repeat
+    delivery — or a booking no longer pending — simply matches no rows.
+    """
+    from core.models import BookingStatus
+    from core.payments import verify_webhook_event
+
+    try:
+        event = verify_webhook_event(
+            request.body, request.META.get("HTTP_STRIPE_SIGNATURE", "")
+        )
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    if event.get("type") == "checkout.session.completed":
+        session = event.get("data", {}).get("object", {})
+        booking_id = (session.get("metadata") or {}).get("booking_id")
+        if booking_id:
+            Booking.objects.filter(
+                pk=booking_id, status=BookingStatus.PENDING_PAYMENT
+            ).update(status=BookingStatus.CONFIRMED)
+
+    return JsonResponse({"received": True})
