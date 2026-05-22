@@ -1,8 +1,8 @@
 ---
 name: enhancements
-status: backlog
+status: completed
 created: 2026-05-21T19:51:40Z
-progress: 0%
+progress: 100%
 prd: .claude/prds/enhancements.md
 github: https://github.com/Yuk1Neek0/PlayDesk/issues/23
 ---
