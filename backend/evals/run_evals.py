@@ -84,34 +84,47 @@ def run_case(case: dict[str, Any], llm_client: Any) -> dict[str, Any]:
     """
     Replay one EvalCase through the agent loop and evaluate its assertions.
 
+    Every row the case writes (conversation, messages, and any booking) is
+    rolled back before returning, so the harness is reproducible: each case —
+    and each repeated run of the whole suite — starts from identical DB state.
+    Without this, eval cases that book the same fixed slots hit the
+    booking-overlap constraint on the second run and corrupt the score
+    (Issue #37).
+
     Returns {"id", "label", "passed", "reason"}.
     """
+    from django.db import transaction
+
     from agent.loop import AgentLoop
     from core.models import Conversation, ConversationStatus, Message, MessageRole
 
-    conversation = Conversation.objects.create(
-        customer_identifier=f"eval-{case['id']}",
-        status=ConversationStatus.ACTIVE,
-    )
+    with transaction.atomic():
+        conversation = Conversation.objects.create(
+            customer_identifier=f"eval-{case['id']}",
+            status=ConversationStatus.ACTIVE,
+        )
 
-    # Replay every turn but the last as prior context.
-    messages = case["messages"]
-    for msg in messages[:-1]:
-        role = MessageRole.USER if msg["role"] == "user" else MessageRole.ASSISTANT
-        Message.objects.create(conversation=conversation, role=role, content=msg["content"])
+        # Replay every turn but the last as prior context.
+        messages = case["messages"]
+        for msg in messages[:-1]:
+            role = MessageRole.USER if msg["role"] == "user" else MessageRole.ASSISTANT
+            Message.objects.create(conversation=conversation, role=role, content=msg["content"])
 
-    final_user_message = messages[-1]["content"]
-    result = AgentLoop(llm_client=llm_client).run(conversation, final_user_message)
+        final_user_message = messages[-1]["content"]
+        result = AgentLoop(llm_client=llm_client).run(conversation, final_user_message)
 
-    tools_used = {
-        name
-        for name in Message.objects.filter(
-            conversation=conversation, role=MessageRole.TOOL
-        ).values_list("tool_call_data__tool_name", flat=True)
-        if name
-    }
+        tools_used = {
+            name
+            for name in Message.objects.filter(
+                conversation=conversation, role=MessageRole.TOOL
+            ).values_list("tool_call_data__tool_name", flat=True)
+            if name
+        }
 
-    passed, reason = check_assertions(case.get("assertions", {}), result, tools_used)
+        passed, reason = check_assertions(case.get("assertions", {}), result, tools_used)
+        # Discard every write — the harness must not pollute the database.
+        transaction.set_rollback(True)
+
     return {"id": case["id"], "label": case["label"], "passed": passed, "reason": reason}
 
 
