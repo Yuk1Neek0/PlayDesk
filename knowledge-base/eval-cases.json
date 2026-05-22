@@ -31,9 +31,9 @@
     "assertions": {
       "tool_called": null,
       "no_booking_created": true,
-      "final_message_contains": ["date", "which"]
+      "final_message_contains": ["date"]
     },
-    "notes": "Date is missing. Agent must ask for the date before booking."
+    "notes": "Date is missing. Agent must ask for the date before booking. Assert on the concept ('date') only — the exact phrasing of the question varies turn to turn."
   },
   {
     "id": "eval-003",
@@ -224,9 +224,9 @@
     "label": "should_clarify",
     "assertions": {
       "no_booking_created": true,
-      "final_message_contains": ["capacity", "4"]
+      "final_message_contains": ["4"]
     },
-    "notes": "10 people exceed PS5 station capacity (4). Agent should inform customer and suggest a private room or multiple stations."
+    "notes": "10 people exceed PS5 station capacity (4). Agent should inform customer and suggest a private room or multiple stations. Assert on the capacity number ('4') only — the agent may phrase the limit without the literal word 'capacity'."
   },
   {
     "id": "eval-014",

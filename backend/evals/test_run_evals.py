@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from agent.llm_client import FakeLLMClient, LLMResponse, ToolCallRequest
-from evals.run_evals import VALID_LABELS, check_assertions, load_cases, run_case
+from evals.run_evals import (
+    VALID_LABELS,
+    check_assertions,
+    load_cases,
+    per_category,
+    run_case,
+)
 
 
 def _result(text: str = "", booking_id: int | None = None) -> dict:
@@ -137,6 +143,16 @@ class TestRunCase:
         outcome = run_case(case, fake)
         assert not outcome["passed"]
         assert "create_booking" in outcome["reason"]
+
+    def test_per_category_breakdown(self):
+        results = [
+            {"label": "should_book", "passed": True},
+            {"label": "should_book", "passed": False},
+            {"label": "should_refuse", "passed": True},
+        ]
+        breakdown = per_category(results)
+        assert breakdown["should_book"] == {"passed": 1, "total": 2, "accuracy": 50.0}
+        assert breakdown["should_refuse"] == {"passed": 1, "total": 1, "accuracy": 100.0}
 
     def test_multi_turn_context_is_replayed(self, db):
         case = {
