@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { hourOf, isoAt, pad, toSlotData } from "./booking-availability";
+import { hourOf, isoAt, pad, storeOffset, toSlotData } from "./booking-availability";
 import type { AvailabilityResponse } from "./api";
 
 function availability(
@@ -68,10 +68,17 @@ describe("toSlotData", () => {
 
 describe("isoAt", () => {
   it("builds a store-local ISO timestamp at the given hour", () => {
-    expect(isoAt(new Date(2026, 4, 22), 20)).toBe("2026-05-22T20:00:00+08:00");
+    const off = storeOffset(new Date(2026, 4, 22));
+    expect(isoAt(new Date(2026, 4, 22), 20)).toBe(`2026-05-22T20:00:00${off}`);
   });
 
   it("rolls hour 24 into midnight of the next day", () => {
-    expect(isoAt(new Date(2026, 4, 22), 24)).toBe("2026-05-23T00:00:00+08:00");
+    const off = storeOffset(new Date(2026, 4, 23));
+    expect(isoAt(new Date(2026, 4, 22), 24)).toBe(`2026-05-23T00:00:00${off}`);
+  });
+
+  it("uses the store timezone offset, not a hardcoded one", () => {
+    // America/Toronto is on EDT (-04:00) in late May.
+    expect(storeOffset(new Date(2026, 4, 22))).toBe("-04:00");
   });
 });

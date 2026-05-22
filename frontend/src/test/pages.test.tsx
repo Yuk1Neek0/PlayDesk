@@ -4,6 +4,30 @@ import BookingPage from "@/app/page";
 import ChatPage from "@/app/chat/page";
 import AdminPage from "@/app/admin/page";
 
+// AdminPage is gated to the staff role — render it as a signed-in staff user.
+vi.mock("@/lib/auth", () => ({
+  useAuth: () => ({
+    user: { name: "Staff Member", role: "staff" as const },
+    ready: true,
+    login: () => {},
+    logout: () => {},
+  }),
+}));
+
+// The Next.js app-router context is not mounted under vitest/jsdom.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: () => {},
+    replace: () => {},
+    prefetch: () => {},
+    back: () => {},
+    forward: () => {},
+    refresh: () => {},
+  }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 function json(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200 });
 }

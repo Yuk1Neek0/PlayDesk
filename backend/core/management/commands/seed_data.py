@@ -11,7 +11,7 @@ from core.models import GameMenu, Resource, Store
 
 STORE_DATA = {
     "name": "PlayDesk Flagship",
-    "timezone": "Asia/Shanghai",
+    "timezone": "America/Toronto",
     "business_hours": {
         "mon": {"open": "10:00", "close": "22:00"},
         "tue": {"open": "10:00", "close": "22:00"},

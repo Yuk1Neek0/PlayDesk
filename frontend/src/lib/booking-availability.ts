@@ -1,11 +1,22 @@
 // Pure helpers for the booking page: bridging the REST availability contract
 // to the design's hourly slot grid, and building booking timestamps.
 
-import { HOURS } from "@/lib/pd-data";
+import { HOURS, STORE_TIMEZONE } from "@/lib/pd-data";
 import type { AvailabilityResponse } from "@/lib/api";
 
-// Store-local timezone offset for the lounge (Shenzhen, per the knowledge base).
-const TZ_OFFSET = "+08:00";
+// The store's UTC offset (e.g. "-04:00") on a given day, derived from
+// STORE_TIMEZONE via Intl so daylight saving is handled automatically.
+export function storeOffset(day: Date): string {
+  const tzName =
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: STORE_TIMEZONE,
+      timeZoneName: "longOffset",
+    })
+      .formatToParts(day)
+      .find((p) => p.type === "timeZoneName")?.value ?? "GMT+00:00";
+  const m = tzName.match(/GMT([+-]\d{2}:\d{2})/);
+  return m ? m[1] : "+00:00";
+}
 
 /** Per-hour availability derived from the API's continuous-block response. */
 export interface SlotData {
@@ -49,5 +60,5 @@ export function toSlotData(resp: AvailabilityResponse): SlotData {
 export function isoAt(date: Date, hour: number): string {
   const day = hour >= 24 ? new Date(date.getTime() + 86_400_000) : date;
   const ymd = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
-  return `${ymd}T${pad(hour % 24)}:00:00${TZ_OFFSET}`;
+  return `${ymd}T${pad(hour % 24)}:00:00${storeOffset(day)}`;
 }

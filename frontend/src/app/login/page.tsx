@@ -9,7 +9,8 @@ export default function LoginPage() {
 
   function handleLogin(name: string, role: "customer" | "staff") {
     login(name, role);
-    router.push("/");
+    // Staff land on the dashboard they just authenticated for.
+    router.push(role === "staff" ? "/admin" : "/");
   }
 
   return (

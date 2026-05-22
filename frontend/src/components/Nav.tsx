@@ -8,10 +8,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/pd-ui";
 
+// Customer-facing navigation. /admin is intentionally absent — the staff
+// dashboard is reached via Sign in and gated by the staff role.
 const LINKS: { href: string; label: string }[] = [
   { href: "/", label: "Book" },
   { href: "/chat", label: "AI Front Desk" },
-  { href: "/admin", label: "Admin" },
 ];
 
 export default function Nav() {
@@ -24,7 +25,7 @@ export default function Nav() {
           <Icon.logo size={20} />
         </span>
         <span className="pd-brand-name">PlayDesk</span>
-        <span className="pd-brand-loc">工大店 · Shenzhen</span>
+        <span className="pd-brand-loc">Downtown · Toronto</span>
       </Link>
       <div className="pd-nav-links">
         {LINKS.map(({ href, label }) => {
@@ -45,7 +46,7 @@ export default function Nav() {
         <button className="pd-icon-btn" aria-label="Search">
           <Icon.search size={16} />
         </button>
-        <Link className="pd-btn pd-btn--ghost pd-btn--sm" href="/admin">
+        <Link className="pd-btn pd-btn--ghost pd-btn--sm" href="/login">
           Sign in
         </Link>
       </div>

@@ -33,3 +33,7 @@ export type BookingSource = "manual" | "agent";
 // Hourly booking-slot grid the picker renders, 10:00 → 23:00.
 export const HOURS: string[] = [];
 for (let h = 10; h <= 23; h++) HOURS.push(`${String(h).padStart(2, "0")}:00`);
+
+// IANA timezone of the lounge. The booking page builds timestamps in this
+// zone and the admin page displays them in it, so the two never disagree.
+export const STORE_TIMEZONE = "America/Toronto";
