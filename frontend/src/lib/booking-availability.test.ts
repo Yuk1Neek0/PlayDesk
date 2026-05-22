@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { hourOf, isoAt, pad, toSlotData } from "./booking-availability";
+import { hourOf, isoAt, pad, storeOffset, toSlotData } from "./booking-availability";
 import type { AvailabilityResponse } from "./api";
 
 function availability(
@@ -24,20 +24,25 @@ describe("pad", () => {
   });
 });
 
+// The availability API returns UTC timestamps. America/Toronto in late May
+// is on EDT (UTC-4), so a store-local hour H is (H+4):00Z.
 describe("hourOf", () => {
-  it("reads the store-local hour from an ISO timestamp", () => {
-    expect(hourOf("2026-05-22T20:00:00+08:00")).toBe(20);
+  it("converts a UTC instant to the store-local hour", () => {
+    // 18:00Z = 14:00 in America/Toronto.
+    expect(hourOf("2026-05-22T18:00:00Z")).toBe(14);
   });
 
-  it("treats a midnight end as hour 24 (end of day)", () => {
-    expect(hourOf("2026-05-23T00:00:00+08:00")).toBe(24);
+  it("treats a store-local midnight as hour 24 (end of day)", () => {
+    // 04:00Z on the 23rd = 00:00 America/Toronto.
+    expect(hourOf("2026-05-23T04:00:00Z")).toBe(24);
   });
 });
 
 describe("toSlotData", () => {
   it("collapses a continuous block into the free hours fully inside it", () => {
+    // 14:00Z–18:00Z = 10:00–14:00 store-local.
     const data = toSlotData(
-      availability([["2026-05-22T10:00:00+08:00", "2026-05-22T14:00:00+08:00"]]),
+      availability([["2026-05-22T14:00:00Z", "2026-05-22T18:00:00Z"]]),
     );
     expect(data.available).toEqual(["10:00", "11:00", "12:00", "13:00"]);
     expect(data.booked).toContain("14:00");
@@ -45,8 +50,9 @@ describe("toSlotData", () => {
   });
 
   it("marks every hour free when a block spans the whole day", () => {
+    // 14:00Z–04:00Z(next day) = 10:00–24:00 store-local.
     const data = toSlotData(
-      availability([["2026-05-22T10:00:00+08:00", "2026-05-23T00:00:00+08:00"]]),
+      availability([["2026-05-22T14:00:00Z", "2026-05-23T04:00:00Z"]]),
     );
     expect(data.available).toHaveLength(14);
     expect(data.booked).toEqual([]);
@@ -59,8 +65,9 @@ describe("toSlotData", () => {
   });
 
   it("aligns suggestion slots to the hour grid", () => {
+    // 01:30Z–03:30Z(next day) = 21:30–23:30 store-local.
     const data = toSlotData(
-      availability([], [["2026-05-22T21:30:00+08:00", "2026-05-22T23:30:00+08:00"]]),
+      availability([], [["2026-05-23T01:30:00Z", "2026-05-23T03:30:00Z"]]),
     );
     expect(data.suggestions).toEqual(["21:00"]);
   });
@@ -68,10 +75,17 @@ describe("toSlotData", () => {
 
 describe("isoAt", () => {
   it("builds a store-local ISO timestamp at the given hour", () => {
-    expect(isoAt(new Date(2026, 4, 22), 20)).toBe("2026-05-22T20:00:00+08:00");
+    const off = storeOffset(new Date(2026, 4, 22));
+    expect(isoAt(new Date(2026, 4, 22), 20)).toBe(`2026-05-22T20:00:00${off}`);
   });
 
   it("rolls hour 24 into midnight of the next day", () => {
-    expect(isoAt(new Date(2026, 4, 22), 24)).toBe("2026-05-23T00:00:00+08:00");
+    const off = storeOffset(new Date(2026, 4, 23));
+    expect(isoAt(new Date(2026, 4, 22), 24)).toBe(`2026-05-23T00:00:00${off}`);
+  });
+
+  it("uses the store timezone offset, not a hardcoded one", () => {
+    // America/Toronto is on EDT (-04:00) in late May.
+    expect(storeOffset(new Date(2026, 4, 22))).toBe("-04:00");
   });
 });

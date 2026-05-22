@@ -66,7 +66,20 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Found {len(jsonl_files)} JSONL file(s) in {kb_dir}")
 
-        client = get_embedding_client()
+        # ingest_kb runs in the container boot chain, so an unconfigured
+        # embedding client (no OPENAI_API_KEY in CI / local dev) must not
+        # crash the whole backend — skip cleanly instead. RAG search is then
+        # unavailable until a key is set and the command is re-run.
+        try:
+            client = get_embedding_client()
+        except Exception as exc:  # noqa: BLE001 - any client init failure → skip
+            self.stderr.write(
+                self.style.WARNING(
+                    f"Embedding client unavailable ({exc}) — skipping knowledge-base "
+                    "ingest. RAG search will be unavailable until it is configured."
+                )
+            )
+            return
 
         total_created = 0
         total_skipped = 0

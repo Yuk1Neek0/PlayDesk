@@ -3,10 +3,11 @@
 // handoff (playdeck/project/src/ui.jsx).
 
 import type { ReactNode } from "react";
-import type {
-  BookingSource,
-  BookingStatus,
-  ResourceType,
+import {
+  STORE_TIMEZONE,
+  type BookingSource,
+  type BookingStatus,
+  type ResourceType,
 } from "@/lib/pd-data";
 
 // ── Labels ──────────────────────────────────────────────────────────────
@@ -30,6 +31,7 @@ export function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: STORE_TIMEZONE,
   });
 }
 
@@ -37,7 +39,7 @@ export function fmtDate(
   iso: string,
   opts: Intl.DateTimeFormatOptions = { weekday: "short", day: "2-digit", month: "short" },
 ): string {
-  return new Date(iso).toLocaleDateString("en-GB", opts);
+  return new Date(iso).toLocaleDateString("en-GB", { ...opts, timeZone: STORE_TIMEZONE });
 }
 
 export function fmtFullDate(d: Date): string {

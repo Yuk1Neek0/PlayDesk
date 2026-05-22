@@ -7,7 +7,9 @@
 // This completes task #22.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
+import { useAuth } from "@/lib/auth";
 import {
   Icon,
   ResourceIcon,
@@ -55,6 +57,13 @@ export default function AdminPage() {
     error: false,
     data: null,
   });
+
+  // Staff-only route guard: send anyone not signed in as staff to /login.
+  const { user, ready: authReady } = useAuth();
+  const router = useRouter();
+  useEffect(() => {
+    if (authReady && user?.role !== "staff") router.replace("/login");
+  }, [authReady, user, router]);
 
   // Booking ids seen on the last load — used to flag freshly arrived rows.
   const bookingIdsRef = useRef<Set<number>>(new Set());
@@ -159,6 +168,11 @@ export default function AdminPage() {
 
   const activeConv = conversations.find((c) => c.id === selectedConv);
 
+  // Hold rendering until the persisted session is resolved, then render
+  // nothing while a non-staff visitor is being redirected to /login.
+  if (!authReady) return <div className="pd-admin" />;
+  if (user?.role !== "staff") return null;
+
   return (
     <div className="pd-admin">
       <header className="pd-admin-head">
@@ -175,7 +189,7 @@ export default function AdminPage() {
             <div className="pd-avatar pd-avatar--user">YS</div>
             <div className="pd-admin-user-meta">
               <div>Yuki S.</div>
-              <div className="pd-admin-user-role">Front desk · 工大店</div>
+              <div className="pd-admin-user-role">Front desk · Toronto</div>
             </div>
           </div>
         </div>
