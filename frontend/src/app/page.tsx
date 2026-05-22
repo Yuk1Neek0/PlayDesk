@@ -1,22 +1,25 @@
 "use client";
 
 // Booking page — guided 4-step flow: resource → date → time → confirm.
-// Ported from the Claude Design handoff (playdeck/project/src/booking.jsx).
-// Availability and submit run on the prototype's mock data; wiring to the
-// real REST API is the remaining work of task #20.
+// UI ported from the Claude Design handoff; data is wired to the live
+// backend through the generated REST client (src/lib/api.ts) — resources,
+// availability, and booking creation are all real API calls. This completes
+// task #20.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Ref } from "react";
 
 import { Icon, ResourceArt, RESOURCE_TYPE_LABEL, fmtFullDate, isoDate } from "@/components/pd-ui";
+import { HOURS, type Resource, type ResourceMeta, type ResourceType } from "@/lib/pd-data";
 import {
-  RESOURCES,
-  HOURS,
-  availabilityFor,
-  type Availability,
-  type Resource,
-  type ResourceType,
-} from "@/lib/pd-data";
+  ApiError,
+  createBooking,
+  getResourceAvailability,
+  listResources,
+  type BookingCreate,
+  type Resource as ApiResource,
+} from "@/lib/api";
+import { isoAt, pad, toSlotData, type SlotData } from "@/lib/booking-availability";
 
 type ConfirmState = "idle" | "loading" | "success" | "error";
 type StepFilter = "all" | ResourceType;
@@ -33,16 +36,36 @@ interface ConfirmedBooking {
   total: string;
 }
 
-interface AvailabilityState {
+interface ResourcesState {
   loading: boolean;
-  data: Availability | null;
+  error: boolean;
+  data: Resource[];
 }
 
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
+interface AvailabilityState {
+  loading: boolean;
+  error: boolean;
+  data: SlotData | null;
+}
+
+// API `Resource` (freeform metadata) → the view model the design uses.
+function toViewResource(r: ApiResource): Resource {
+  return {
+    id: r.id,
+    type: r.type,
+    name: r.name,
+    capacity: r.capacity,
+    price_per_hour: r.price_per_hour,
+    metadata: (r.metadata ?? {}) as ResourceMeta,
+  };
 }
 
 export default function BookingPage() {
+  const [resourcesState, setResourcesState] = useState<ResourcesState>({
+    loading: true,
+    error: false,
+    data: [],
+  });
   const [resource, setResource] = useState<Resource | null>(null);
   const [filter, setFilter] = useState<StepFilter>("all");
   const [date, setDate] = useState<Date>(() => new Date(2026, 4, 22));
@@ -55,21 +78,43 @@ export default function BookingPage() {
   const [confirmedBooking, setConfirmedBooking] = useState<ConfirmedBooking | null>(null);
   const [availability, setAvailability] = useState<AvailabilityState>({
     loading: false,
+    error: false,
     data: null,
   });
+
+  // Load the resource catalogue from the API once.
+  useEffect(() => {
+    let cancelled = false;
+    listResources()
+      .then((page) => {
+        if (!cancelled) {
+          setResourcesState({ loading: false, error: false, data: page.results.map(toViewResource) });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setResourcesState({ loading: false, error: true, data: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Load availability whenever the resource or date changes.
   useEffect(() => {
     if (!resource) return;
-    setAvailability({ loading: true, data: null });
+    let cancelled = false;
+    setAvailability({ loading: true, error: false, data: null });
     setSlot(null);
-    const t = setTimeout(() => {
-      setAvailability({
-        loading: false,
-        data: availabilityFor(resource.id, isoDate(date)),
+    getResourceAvailability(resource.id, isoDate(date))
+      .then((resp) => {
+        if (!cancelled) setAvailability({ loading: false, error: false, data: toSlotData(resp) });
+      })
+      .catch(() => {
+        if (!cancelled) setAvailability({ loading: false, error: true, data: null });
       });
-    }, 380);
-    return () => clearTimeout(t);
+    return () => {
+      cancelled = true;
+    };
   }, [resource, date]);
 
   const step1 = useRef<HTMLElement>(null);
@@ -105,28 +150,38 @@ export default function BookingPage() {
   function submit() {
     if (!resource || !slot || !name || !phone) return;
     setConfirmState("loading");
-    setTimeout(() => {
-      // Conflict simulation is disabled for the demo.
-      const collide = Math.random() < 0;
-      if (collide) {
+    const startHour = parseInt(slot, 10);
+    const body: BookingCreate = {
+      resource_id: resource.id,
+      customer_name: name,
+      customer_phone: phone,
+      start_time: isoAt(date, startHour),
+      end_time: isoAt(date, startHour + duration),
+      source: "manual",
+    };
+    createBooking(body)
+      .then((booking) => {
+        setConfirmedBooking({
+          id: booking.id,
+          resource,
+          date: isoDate(date),
+          slot,
+          end: `${pad((startHour + duration) % 24)}:00`,
+          duration,
+          name,
+          phone,
+          total: (parseFloat(resource.price_per_hour) * duration).toFixed(0),
+        });
+        setConfirmState("success");
+      })
+      .catch((err) => {
         setConfirmState("error");
-        setErrorMsg("That slot was just taken. Try a nearby time.");
-        return;
-      }
-      const endHour = parseInt(slot.slice(0, 2), 10) + duration;
-      setConfirmedBooking({
-        id: 4112 + Math.floor(Math.random() * 99),
-        resource,
-        date: isoDate(date),
-        slot,
-        end: `${pad(endHour)}:00`,
-        duration,
-        name,
-        phone,
-        total: (parseFloat(resource.price_per_hour) * duration).toFixed(0),
+        setErrorMsg(
+          err instanceof ApiError && err.status === 409
+            ? "That slot was just taken. Try a nearby time."
+            : "Something went wrong creating your booking. Please try again.",
+        );
       });
-      setConfirmState("success");
-    }, 900);
   }
 
   function reset() {
@@ -140,8 +195,11 @@ export default function BookingPage() {
   }
 
   const filteredResources = useMemo(
-    () => (filter === "all" ? RESOURCES : RESOURCES.filter((r) => r.type === filter)),
-    [filter],
+    () =>
+      filter === "all"
+        ? resourcesState.data
+        : resourcesState.data.filter((r) => r.type === filter),
+    [filter, resourcesState.data],
   );
 
   // A 14-day strip starting "today" (21 May 2026 in the prototype's clock).
@@ -160,8 +218,9 @@ export default function BookingPage() {
     return <ConfirmationView booking={confirmedBooking} onReset={reset} />;
   }
 
-  const total =
-    resource ? (parseFloat(resource.price_per_hour) * duration).toFixed(0) : "—";
+  const total = resource
+    ? (parseFloat(resource.price_per_hour) * duration).toFixed(0)
+    : "—";
 
   return (
     <div className="pd-page pd-page--booking">
@@ -204,16 +263,27 @@ export default function BookingPage() {
             </button>
           ))}
         </div>
-        <div className="pd-resource-grid">
-          {filteredResources.map((r) => (
-            <ResourceCard
-              key={r.id}
-              r={r}
-              selected={resource?.id === r.id}
-              onSelect={() => chooseResource(r)}
-            />
-          ))}
-        </div>
+        {resourcesState.loading && (
+          <div className="pd-empty">Loading resources…</div>
+        )}
+        {resourcesState.error && (
+          <div className="pd-error">
+            <span className="pd-error-dot" />
+            Couldn&apos;t load resources. Refresh to try again.
+          </div>
+        )}
+        {!resourcesState.loading && !resourcesState.error && (
+          <div className="pd-resource-grid">
+            {filteredResources.map((r) => (
+              <ResourceCard
+                key={r.id}
+                r={r}
+                selected={resource?.id === r.id}
+                onSelect={() => chooseResource(r)}
+              />
+            ))}
+          </div>
+        )}
       </Step>
 
       {/* Step 2 — Date */}
@@ -452,6 +522,14 @@ function SlotsGrid({
       </div>
     );
   }
+  if (availability.error) {
+    return (
+      <div className="pd-error">
+        <span className="pd-error-dot" />
+        Couldn&apos;t load availability. Pick another date or try again.
+      </div>
+    );
+  }
   if (!availability.data) {
     return <div className="pd-empty">Pick a resource and a date to see open slots.</div>;
   }
@@ -469,17 +547,20 @@ function SlotsGrid({
   const taken = HOURS.filter((h) => !free.has(h));
 
   if (usableFree.length === 0) {
+    const suggestions = availability.data.suggestions;
     return (
       <div className="pd-empty">
         <strong>Fully booked at this duration.</strong>
         <p>Try a shorter session or a nearby date.</p>
-        <div className="pd-suggestions">
-          {["10:00", "17:00", "21:00"].map((s) => (
-            <button key={s} className="pd-chip pd-chip--suggest" onClick={() => onPick(s)}>
-              {s} (next day)
-            </button>
-          ))}
-        </div>
+        {suggestions.length > 0 && (
+          <div className="pd-suggestions">
+            {suggestions.map((s) => (
+              <button key={s} className="pd-chip pd-chip--suggest" onClick={() => onPick(s)}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
