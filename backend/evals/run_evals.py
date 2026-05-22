@@ -115,6 +115,25 @@ def run_case(case: dict[str, Any], llm_client: Any) -> dict[str, Any]:
     return {"id": case["id"], "label": case["label"], "passed": passed, "reason": reason}
 
 
+def per_category(results: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """
+    Break a results list down by label.
+
+    Returns ``{label: {"passed": int, "total": int, "accuracy": float}}``.
+    The aggregate accuracy hides that one category (``should_book``) is the
+    whole problem — this breakdown surfaces it (Issue #37).
+    """
+    breakdown: dict[str, dict[str, Any]] = {}
+    for r in results:
+        bucket = breakdown.setdefault(r["label"], {"passed": 0, "total": 0})
+        bucket["total"] += 1
+        if r["passed"]:
+            bucket["passed"] += 1
+    for bucket in breakdown.values():
+        bucket["accuracy"] = bucket["passed"] / bucket["total"] * 100.0
+    return breakdown
+
+
 def run_all(cases: list[dict[str, Any]], llm_client: Any) -> dict[str, Any]:
     """Run every case, print per-case results, and return an aggregate summary."""
     results = []
@@ -127,8 +146,20 @@ def run_all(cases: list[dict[str, Any]], llm_client: Any) -> dict[str, Any]:
     total = len(results)
     passed = sum(1 for r in results if r["passed"])
     accuracy = (passed / total * 100.0) if total else 0.0
+
+    categories = per_category(results)
+    print("\nPer-category accuracy:")
+    for label in sorted(categories):
+        cat = categories[label]
+        print(f"  {label:<18} {cat['passed']}/{cat['total']} ({cat['accuracy']:.1f}%)")
     print(f"\nAccuracy: {passed}/{total} ({accuracy:.1f}%)")
-    return {"total": total, "passed": passed, "accuracy": accuracy, "results": results}
+    return {
+        "total": total,
+        "passed": passed,
+        "accuracy": accuracy,
+        "categories": categories,
+        "results": results,
+    }
 
 
 def main() -> int:
