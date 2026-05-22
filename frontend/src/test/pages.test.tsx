@@ -5,64 +5,57 @@ import ChatPage from "@/app/chat/page";
 import AdminPage from "@/app/admin/page";
 
 describe("BookingPage", () => {
-  it("renders the booking page heading", () => {
+  it("renders the page heading", () => {
     render(<BookingPage />);
-    expect(screen.getByText("Book a Station")).toBeTruthy();
+    expect(screen.getByText(/Pick your station/i)).toBeTruthy();
   });
 
-  it("renders all four step sections", () => {
+  it("renders the four step titles", () => {
     render(<BookingPage />);
-    expect(screen.getByText(/Choose a Resource/i)).toBeTruthy();
-    expect(screen.getByText(/Pick a Date/i)).toBeTruthy();
-    expect(screen.getByText(/Choose a Time Slot/i)).toBeTruthy();
-    // "Confirm Booking" appears in both the h2 and the button
-    expect(screen.getAllByText(/Confirm Booking/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Choose a resource")).toBeTruthy();
+    expect(screen.getByText("Pick a date")).toBeTruthy();
+    expect(screen.getByText("Choose a time")).toBeTruthy();
+    expect(screen.getByText("Confirm booking")).toBeTruthy();
   });
 
-  it("renders resource options", () => {
+  it("renders resource cards", () => {
     render(<BookingPage />);
-    expect(screen.getByText("PS5 Station")).toBeTruthy();
+    expect(screen.getByText("PS5 Station · A")).toBeTruthy();
     expect(screen.getByText("Switch Station")).toBeTruthy();
-    expect(screen.getByText("Private Room")).toBeTruthy();
   });
 });
 
 describe("ChatPage", () => {
-  it("renders the chat page heading", () => {
+  it("renders the chat header", () => {
     render(<ChatPage />);
-    expect(screen.getByText("AI Front Desk")).toBeTruthy();
+    expect(screen.getByText("PlayDesk Front Desk")).toBeTruthy();
   });
 
-  it("renders the AI greeting message", () => {
+  it("renders the assistant greeting", () => {
     render(<ChatPage />);
-    expect(screen.getByText(/Hi! I'm the PlayDesk AI front desk/i)).toBeTruthy();
+    expect(screen.getByText(/I'm the PlayDesk front desk/i)).toBeTruthy();
   });
 
-  it("renders tool-call hint", () => {
+  it("renders quick-reply suggestions", () => {
     render(<ChatPage />);
-    expect(screen.getByText(/checking availability/i)).toBeTruthy();
+    expect(screen.getByText("What board games do you have?")).toBeTruthy();
   });
 });
 
 describe("AdminPage", () => {
-  it("renders the admin page heading", () => {
+  it("renders the dashboard heading", () => {
     render(<AdminPage />);
-    expect(screen.getByText("Staff Dashboard")).toBeTruthy();
+    expect(screen.getByText("Tonight at PlayDesk")).toBeTruthy();
   });
 
-  it("renders the conversations section", () => {
+  it("renders the live conversations panel", () => {
     render(<AdminPage />);
-    expect(screen.getByText("Live Conversations")).toBeTruthy();
+    expect(screen.getByText("Live conversations")).toBeTruthy();
   });
 
-  it("renders the bookings section", () => {
+  it("renders the bookings table with data", () => {
     render(<AdminPage />);
-    expect(screen.getByText("All Bookings")).toBeTruthy();
-  });
-
-  it("renders mock booking data", () => {
-    render(<AdminPage />);
+    expect(screen.getByText("All bookings")).toBeTruthy();
     expect(screen.getByText("Alice Chen")).toBeTruthy();
-    expect(screen.getByText("PS5 Station")).toBeTruthy();
   });
 });
