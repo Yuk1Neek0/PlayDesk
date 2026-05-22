@@ -30,7 +30,7 @@ from core.models import Conversation, Message, MessageRole
 
 from .language import detect_language
 from .llm_client import LLMClientProtocol, LLMResponse, ToolCallRequest
-from .prompt import SYSTEM_PROMPT, language_directive
+from .prompt import SYSTEM_PROMPT, date_directive, language_directive
 
 # ---------------------------------------------------------------------------
 # SSE event dataclasses (lightweight dicts to avoid import cycles)
@@ -432,7 +432,7 @@ class AgentLoop:
     # ------------------------------------------------------------------
 
     def _build_system_prompt(self, lang: str) -> str:
-        prompt = SYSTEM_PROMPT + language_directive(lang)
+        prompt = SYSTEM_PROMPT + date_directive() + language_directive(lang)
         if not self._rag_chunks:
             return prompt
         chunks_text = "\n\n".join(
