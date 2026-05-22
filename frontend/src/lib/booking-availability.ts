@@ -29,11 +29,17 @@ export function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-// The store-local hour written in an ISO timestamp — read straight from the
-// string so runtime timezone never enters into it. A midnight end (00:00)
-// represents the end of the day, so it counts as hour 24.
+// The store-local hour of an ISO instant. The availability API returns UTC
+// timestamps, so the instant is converted into STORE_TIMEZONE rather than
+// read off the string. A midnight boundary counts as hour 24 (end of day).
 export function hourOf(iso: string): number {
-  const h = parseInt(iso.slice(11, 13), 10);
+  const h = Number(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: STORE_TIMEZONE,
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date(iso)),
+  );
   return h === 0 ? 24 : h;
 }
 
@@ -52,7 +58,7 @@ export function toSlotData(resp: AvailabilityResponse): SlotData {
     booked: HOURS.filter((h) => !free.has(h)),
     // Align suggestions to the hour grid — the rest of the booking flow
     // works in whole hours, so a picked suggestion must too.
-    suggestions: resp.suggestions.map((s) => `${s.start.slice(11, 13)}:00`),
+    suggestions: resp.suggestions.map((s) => `${pad(hourOf(s.start) % 24)}:00`),
   };
 }
 
