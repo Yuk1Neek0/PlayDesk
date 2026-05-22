@@ -206,6 +206,70 @@ class TestAgentLoopToolFailure:
         assert "Unknown tool" in end_events[0][1]["error"]
 
 
+class TestAgentLoopBilingual:
+    """Issue #27 — language detection drives reply language + KB retrieval."""
+
+    @staticmethod
+    def _spy_system(fake):
+        """Wrap fake.complete to capture the system prompt of each call."""
+        calls: list[dict] = []
+        original = fake.complete
+
+        def spy_complete(system, messages, tools):
+            calls.append({"system": system})
+            return original(system, messages, tools)
+
+        fake.complete = spy_complete  # type: ignore[method-assign]
+        return calls
+
+    def test_chinese_message_sets_chinese_reply_directive(self, conversation):
+        fake = FakeLLMClient([_make_text_response("你好！")])
+        calls = self._spy_system(fake)
+        AgentLoop(llm_client=fake).run(conversation, "你们几点关门？")
+
+        assert calls
+        assert "中文" in calls[0]["system"]
+
+    def test_english_message_sets_english_reply_directive(self, conversation):
+        fake = FakeLLMClient([_make_text_response("Hello!")])
+        calls = self._spy_system(fake)
+        AgentLoop(llm_client=fake).run(conversation, "What time do you close?")
+
+        assert calls
+        assert "Reply in English" in calls[0]["system"]
+
+    def test_chinese_message_forces_zh_kb_retrieval(self, conversation):
+        """A Chinese question pins search_knowledge_base to lang='zh'."""
+        events: list[tuple] = []
+        fake = FakeLLMClient(
+            [
+                _make_tool_response("search_knowledge_base", {"query": "退款政策"}),
+                _make_text_response("可以在24小时前取消。"),
+            ]
+        )
+        loop = AgentLoop(llm_client=fake, event_callback=lambda t, p: events.append((t, p)))
+        loop.run(conversation, "你们的退款政策是什么？")
+
+        starts = [e for e in events if e[0] == "tool_call_start"]
+        assert len(starts) == 1
+        assert starts[0][1]["arguments"]["lang"] == "zh"
+
+    def test_english_message_forces_en_kb_retrieval(self, conversation):
+        events: list[tuple] = []
+        fake = FakeLLMClient(
+            [
+                _make_tool_response("search_knowledge_base", {"query": "refund policy"}),
+                _make_text_response("You can cancel up to 24 hours ahead."),
+            ]
+        )
+        loop = AgentLoop(llm_client=fake, event_callback=lambda t, p: events.append((t, p)))
+        loop.run(conversation, "What is your refund policy?")
+
+        starts = [e for e in events if e[0] == "tool_call_start"]
+        assert len(starts) == 1
+        assert starts[0][1]["arguments"]["lang"] == "en"
+
+
 class TestAgentLoopRagInjection:
     def test_rag_chunks_injected_into_system_prompt(self, conversation):
         """RAG chunks must appear in the system prompt sent to the LLM."""

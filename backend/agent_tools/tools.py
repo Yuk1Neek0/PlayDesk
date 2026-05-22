@@ -101,6 +101,25 @@ def search_knowledge_base(inp: SearchKnowledgeBaseInput) -> SearchKnowledgeBaseO
 # ===========================================================================
 
 
+def _resources_free_in(candidates, start, end):
+    """
+    Subset of `candidates` with no non-cancelled booking overlapping
+    [start, end). Two bookings overlap iff each starts before the other ends.
+    """
+    from core.models import Booking, BookingStatus
+
+    conflicting = set(
+        Booking.objects.filter(
+            resource__in=candidates,
+            start_time__lt=end,
+            end_time__gt=start,
+        )
+        .exclude(status=BookingStatus.CANCELLED)
+        .values_list("resource_id", flat=True)
+    )
+    return [r for r in candidates if r.pk not in conflicting]
+
+
 def check_availability(inp: CheckAvailabilityInput) -> CheckAvailabilityOutput:
     """
     Return all resources of the requested type that are free during the
@@ -108,8 +127,9 @@ def check_availability(inp: CheckAvailabilityInput) -> CheckAvailabilityOutput:
 
     Availability is determined by: no non-cancelled booking overlaps the window.
 
-    suggestions is left empty here — conflict-aware alternatives are a
-    nice-to-have (enhancements epic).
+    When the requested window is fully taken, `suggestions` carries up to two
+    nearby alternative windows (same day ±1–2 h, or same time next day) that
+    are themselves bookable — conflict-aware suggestions (enhancements epic).
     """
     if not _db_available():
         base = datetime(2026, 5, 22, 20, 0, tzinfo=_UTC)
@@ -121,7 +141,7 @@ def check_availability(inp: CheckAvailabilityInput) -> CheckAvailabilityOutput:
             ],
         )
     try:
-        from core.models import Booking, BookingStatus, Resource
+        from core.models import Resource
 
         # Parse requested window
         requested_date = datetime.strptime(inp.date, "%Y-%m-%d").date()
@@ -146,30 +166,39 @@ def check_availability(inp: CheckAvailabilityInput) -> CheckAvailabilityOutput:
             tzinfo=UTC,
         )
 
-        # Find resources of the right type with sufficient capacity
-        candidates = Resource.objects.filter(
-            type=inp.resource_type,
-            capacity__gte=inp.party_size,
-        )
-
-        # Exclude resources that have a non-cancelled overlapping booking
-        conflicting_resource_ids = set(
-            Booking.objects.filter(
-                resource__in=candidates,
-                start_time__lt=requested_end,
-                end_time__gt=requested_start,
+        # Resources of the right type with sufficient capacity.
+        candidates = list(
+            Resource.objects.filter(
+                type=inp.resource_type,
+                capacity__gte=inp.party_size,
             )
-            .exclude(status=BookingStatus.CANCELLED)
-            .values_list("resource_id", flat=True)
         )
 
-        available_resources = [r for r in candidates if r.pk not in conflicting_resource_ids]
-
+        available_resources = _resources_free_in(candidates, requested_start, requested_end)
         available_slots = [
             TimeSlot(start=requested_start, end=requested_end) for _ in available_resources
         ]
 
-        return CheckAvailabilityOutput(available=available_slots, suggestions=[])
+        # Conflict-aware suggestions: when nothing is free for the requested
+        # window, offer up to two nearby windows that are actually bookable.
+        suggestions: list[TimeSlot] = []
+        if not available_resources:
+            duration = requested_end - requested_start
+            for offset in (
+                timedelta(hours=-1),
+                timedelta(hours=1),
+                timedelta(hours=-2),
+                timedelta(hours=2),
+                timedelta(days=1),
+            ):
+                alt_start = requested_start + offset
+                alt_end = alt_start + duration
+                if _resources_free_in(candidates, alt_start, alt_end):
+                    suggestions.append(TimeSlot(start=alt_start, end=alt_end))
+                    if len(suggestions) >= 2:
+                        break
+
+        return CheckAvailabilityOutput(available=available_slots, suggestions=suggestions)
 
     except Exception:  # noqa: BLE001
         return CheckAvailabilityOutput(available=[], suggestions=[])
@@ -231,7 +260,11 @@ def get_resource_details(inp: GetResourceDetailsInput) -> GetResourceDetailsOutp
 
 def create_booking(inp: CreateBookingInput) -> CreateBookingOutput:
     """
-    Create a Booking row.
+    Create a Booking row in `pending_payment` and open a Stripe deposit hold.
+
+    The booking is created as `pending_payment`; a Stripe Checkout session
+    (test mode) is opened for the deposit and the webhook flips it to
+    `confirmed` once paid. Unpaid holds are reaped by the expire_holds command.
 
     Returns CreateBookingSuccess on success.
     Returns BookingConflictError if the DB EXCLUDE constraint fires (overlap).
@@ -246,7 +279,7 @@ def create_booking(inp: CreateBookingInput) -> CreateBookingOutput:
                 resource_name="PS5 Station 1",
                 start_time=start,
                 end_time=end,
-                status="confirmed",
+                status="pending_payment",
             )
         )
 
@@ -272,9 +305,17 @@ def create_booking(inp: CreateBookingInput) -> CreateBookingOutput:
             customer_phone=inp.customer_phone,
             start_time=inp.start_time,
             end_time=end_time,
-            status=BookingStatus.CONFIRMED,
+            status=BookingStatus.PENDING_PAYMENT,
             source=BookingSource.AGENT,
         )
+        # Open a Stripe Checkout deposit session (test mode). A failure here
+        # leaves the booking in pending_payment for expire_holds to reap.
+        try:
+            from core.payments import create_checkout_session
+
+            create_checkout_session(booking)
+        except Exception:  # noqa: BLE001
+            pass
         return CreateBookingOutput(
             result=CreateBookingSuccess(
                 booking_id=booking.pk,

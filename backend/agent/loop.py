@@ -28,8 +28,9 @@ from django.conf import settings
 from agent_tools.registry import all_tools, get_tool
 from core.models import Conversation, Message, MessageRole
 
+from .language import detect_language
 from .llm_client import LLMClientProtocol, LLMResponse, ToolCallRequest
-from .prompt import SYSTEM_PROMPT
+from .prompt import SYSTEM_PROMPT, language_directive
 
 # ---------------------------------------------------------------------------
 # SSE event dataclasses (lightweight dicts to avoid import cycles)
@@ -260,7 +261,10 @@ class AgentLoop:
         # Emit user-content token so streaming SSE can show it immediately
         # (omitted — the user message isn't streamed back, only assistant tokens)
 
-        system = self._build_system_prompt()
+        # Detect the customer's language from this turn so the agent both
+        # replies in it and retrieves KB chunks tagged with it.
+        lang = detect_language(user_content)
+        system = self._build_system_prompt(lang)
         iteration = 0
         booking_id: int | None = None
         final_text = ""
@@ -306,6 +310,13 @@ class AgentLoop:
                 break
 
             # --- Tool-call branch ---
+            # Bilingual retrieval: pin search_knowledge_base to the detected
+            # language so a Chinese question hits lang="zh" KB chunks,
+            # regardless of what the model passed for `lang`.
+            for tc in response.tool_calls:
+                if tc.tool_name == "search_knowledge_base":
+                    tc.arguments["lang"] = lang
+
             # Persist assistant turn with tool calls in tool_call_data
             tool_call_content = [
                 {
@@ -420,10 +431,11 @@ class AgentLoop:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self, lang: str) -> str:
+        prompt = SYSTEM_PROMPT + language_directive(lang)
         if not self._rag_chunks:
-            return SYSTEM_PROMPT
+            return prompt
         chunks_text = "\n\n".join(
             f"[Knowledge chunk {i + 1}]\n{chunk}" for i, chunk in enumerate(self._rag_chunks)
         )
-        return SYSTEM_PROMPT + "\n\n## Relevant Knowledge Base Excerpts\n\n" + chunks_text
+        return prompt + "\n\n## Relevant Knowledge Base Excerpts\n\n" + chunks_text

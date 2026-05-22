@@ -53,3 +53,27 @@ When a customer wants to book, follow this sequence:
 "Let me hand this over to a human teammate who can help you further."
 - Always respond in the same language the customer used.
 """
+
+
+# ---------------------------------------------------------------------------
+# Bilingual support — a per-turn directive appended to the system prompt
+# based on the detected language of the customer's message.
+# ---------------------------------------------------------------------------
+
+_LANGUAGE_DIRECTIVE = {
+    "en": (
+        "\n\n## Language\n"
+        "The customer is writing in English. Reply in English, and when you "
+        'call `search_knowledge_base` pass `lang="en"`.'
+    ),
+    "zh": (
+        "\n\n## Language\n"
+        "The customer is writing in Chinese. Reply in 中文 (Simplified Chinese), "
+        'and when you call `search_knowledge_base` pass `lang="zh"`.'
+    ),
+}
+
+
+def language_directive(lang: str) -> str:
+    """Return a system-prompt fragment instructing the agent's reply language."""
+    return _LANGUAGE_DIRECTIVE.get(lang, _LANGUAGE_DIRECTIVE["en"])
