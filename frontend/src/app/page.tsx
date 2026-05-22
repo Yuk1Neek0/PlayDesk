@@ -27,7 +27,7 @@ type StepFilter = "all" | ResourceType;
 interface ConfirmedBooking {
   id: number;
   resource: Resource;
-  date: string;
+  date: Date;
   slot: string;
   end: string;
   duration: number;
@@ -164,7 +164,7 @@ export default function BookingPage() {
         setConfirmedBooking({
           id: booking.id,
           resource,
-          date: isoDate(date),
+          date,
           slot,
           end: `${pad((startHour + duration) % 24)}:00`,
           duration,
@@ -477,7 +477,7 @@ function ResourceCard({
         <div className="pd-rcard-meta">
           <span className="pd-chip pd-chip--ghost">{RESOURCE_TYPE_LABEL[r.type]}</span>
           <span className="pd-chip pd-chip--ghost">up to {r.capacity}</span>
-          {r.metadata.controller_count && (
+          {!!r.metadata.controller_count && (
             <span className="pd-chip pd-chip--ghost">{r.metadata.controller_count} pads</span>
           )}
           {r.metadata.projector && <span className="pd-chip pd-chip--ghost">projector</span>}
@@ -625,7 +625,7 @@ function ConfirmationView({
           </div>
           <div>
             <span className="pd-confirmed-key">Date</span>
-            <span>{fmtFullDate(new Date(booking.date))}</span>
+            <span>{fmtFullDate(booking.date)}</span>
           </div>
           <div>
             <span className="pd-confirmed-key">Time</span>

@@ -42,6 +42,9 @@ export default function ChatPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(2);
+  // Guards the window between a send starting and the stream taking over,
+  // so a fast double-send can't create two conversations.
+  const busyRef = useRef(false);
 
   const { status, text, tools, result, error, send: streamSend } = useChatStream();
   const streaming = status === "streaming";
@@ -58,7 +61,8 @@ export default function ChatPage() {
 
   async function send(raw: string) {
     const content = raw.trim();
-    if (!content || streaming) return;
+    if (!content || streaming || busyRef.current) return;
+    busyRef.current = true;
 
     // The previous assistant turn (if any) is finished — commit it to history
     // before the hook is reset by the next stream.
@@ -94,10 +98,12 @@ export default function ChatPage() {
             booking: null,
           },
         ]);
+        busyRef.current = false;
         return;
       }
     }
     streamSend(cid, content);
+    busyRef.current = false;
   }
 
   function retry() {

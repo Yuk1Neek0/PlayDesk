@@ -58,11 +58,11 @@ describe("toSlotData", () => {
     expect(data.booked).toHaveLength(14);
   });
 
-  it("formats suggestion slots as HH:MM", () => {
+  it("aligns suggestion slots to the hour grid", () => {
     const data = toSlotData(
       availability([], [["2026-05-22T21:30:00+08:00", "2026-05-22T23:30:00+08:00"]]),
     );
-    expect(data.suggestions).toEqual(["21:30"]);
+    expect(data.suggestions).toEqual(["21:00"]);
   });
 });
 

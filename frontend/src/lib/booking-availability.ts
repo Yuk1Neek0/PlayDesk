@@ -39,7 +39,9 @@ export function toSlotData(resp: AvailabilityResponse): SlotData {
   return {
     available,
     booked: HOURS.filter((h) => !free.has(h)),
-    suggestions: resp.suggestions.map((s) => s.start.slice(11, 16)),
+    // Align suggestions to the hour grid — the rest of the booking flow
+    // works in whole hours, so a picked suggestion must too.
+    suggestions: resp.suggestions.map((s) => `${s.start.slice(11, 13)}:00`),
   };
 }
 
