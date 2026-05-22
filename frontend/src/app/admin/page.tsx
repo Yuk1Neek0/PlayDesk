@@ -1,120 +1,450 @@
-export default function AdminPage() {
-  const mockBookings = [
-    { id: 1, customer: "Alice Chen", resource: "PS5 Station", time: "2026-05-22 20:00", status: "confirmed", source: "agent" },
-    { id: 2, customer: "Bob Kim", resource: "Private Room A", time: "2026-05-22 18:00", status: "confirmed", source: "manual" },
-    { id: 3, customer: "Carol Wu", resource: "Switch Station", time: "2026-05-23 14:00", status: "pending", source: "agent" },
-  ];
+"use client";
 
-  const mockConversations = [
-    { id: 1, customer: "alice-42", status: "active", messages: 6, started: "2026-05-22 19:45" },
-    { id: 2, customer: "carol-99", status: "active", messages: 3, started: "2026-05-22 19:58" },
-    { id: 3, customer: "dave-07", status: "ended", messages: 12, started: "2026-05-22 17:10" },
-  ];
+// Staff dashboard — UI ported from the Claude Design handoff, wired to the
+// live admin endpoints: bookings and conversations load from the REST client,
+// the selected conversation's transcript is fetched on demand, and the
+// bookings table polls so new bookings surface without a manual refresh.
+// This completes task #22.
+
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  Icon,
+  ResourceIcon,
+  SourceBadge,
+  StatusBadge,
+  fmtDate,
+  fmtTime,
+  relTime,
+} from "@/components/pd-ui";
+import {
+  adminListBookings,
+  adminListConversations,
+  getConversation,
+  listResources,
+  type Booking,
+  type Conversation,
+  type ConversationDetail,
+  type Resource,
+} from "@/lib/api";
+
+type LoadState = "loading" | "ready" | "error";
+
+// The bookings table refetches on this cadence so new bookings appear live.
+const POLL_MS = 12_000;
+
+interface PreviewState {
+  loading: boolean;
+  error: boolean;
+  data: ConversationDetail | null;
+}
+
+export default function AdminPage() {
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [resourceById, setResourceById] = useState<Record<string, Resource>>({});
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [newIds, setNewIds] = useState<Set<number>>(new Set());
+  const [updatedAgo, setUpdatedAgo] = useState(0);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [selectedConv, setSelectedConv] = useState<number | null>(null);
+  const [preview, setPreview] = useState<PreviewState>({
+    loading: false,
+    error: false,
+    data: null,
+  });
+
+  // Booking ids seen on the last load — used to flag freshly arrived rows.
+  const bookingIdsRef = useRef<Set<number>>(new Set());
+
+  // Initial load: resources, bookings, and conversations together.
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([listResources(), adminListBookings(), adminListConversations()])
+      .then(([res, bk, cv]) => {
+        if (cancelled) return;
+        setResourceById(Object.fromEntries(res.results.map((r) => [r.id, r] as const)));
+        setBookings(bk.results);
+        bookingIdsRef.current = new Set(bk.results.map((b) => b.id));
+        setConversations(cv.results);
+        setSelectedConv(cv.results[0]?.id ?? null);
+        setLoadState("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setLoadState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Live updates: tick the "updated Xs ago" label and poll the bookings list.
+  useEffect(() => {
+    const ticker = setInterval(() => setUpdatedAgo((s) => s + 5), 5_000);
+    const poll = setInterval(() => {
+      adminListBookings()
+        .then((bk) => {
+          const fresh = bk.results
+            .filter((b) => !bookingIdsRef.current.has(b.id))
+            .map((b) => b.id);
+          bookingIdsRef.current = new Set(bk.results.map((b) => b.id));
+          setBookings(bk.results);
+          setUpdatedAgo(0);
+          if (fresh.length > 0) {
+            setNewIds(new Set(fresh));
+            setTimeout(() => setNewIds(new Set()), 3_500);
+          }
+        })
+        .catch(() => {
+          /* keep the last good data; the next poll will retry */
+        });
+    }, POLL_MS);
+    return () => {
+      clearInterval(ticker);
+      clearInterval(poll);
+    };
+  }, []);
+
+  // Load the selected conversation's transcript for the preview panel.
+  useEffect(() => {
+    if (selectedConv === null) return;
+    let cancelled = false;
+    setPreview({ loading: true, error: false, data: null });
+    getConversation(selectedConv)
+      .then((data) => {
+        if (!cancelled) setPreview({ loading: false, error: false, data });
+      })
+      .catch(() => {
+        if (!cancelled) setPreview({ loading: false, error: true, data: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedConv]);
+
+  const filtered = useMemo(
+    () =>
+      bookings.filter((b) => {
+        if (statusFilter !== "all" && b.status !== statusFilter) return false;
+        if (dateFilter !== "all") {
+          const d = b.start_time.slice(0, 10);
+          if (dateFilter === "today" && d !== "2026-05-22") return false;
+          if (dateFilter === "tomorrow" && d !== "2026-05-23") return false;
+        }
+        if (search) {
+          const q = search.toLowerCase();
+          const hit =
+            b.customer_name.toLowerCase().includes(q) ||
+            (resourceById[b.resource_id]?.name ?? "").toLowerCase().includes(q) ||
+            b.customer_phone.includes(q) ||
+            String(b.id).includes(q);
+          if (!hit) return false;
+        }
+        return true;
+      }),
+    [bookings, statusFilter, dateFilter, search, resourceById],
+  );
+
+  const stats = useMemo(() => {
+    const today = bookings.filter((b) => b.start_time.startsWith("2026-05-22"));
+    return {
+      today: today.length,
+      confirmed: today.filter((b) => b.status === "confirmed").length,
+      pending_payment: bookings.filter((b) => b.status === "pending_payment").length,
+      active_chats: conversations.filter((c) => c.status === "active").length,
+    };
+  }, [bookings, conversations]);
+
+  const activeConv = conversations.find((c) => c.id === selectedConv);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-12">
-      <h1 className="text-3xl font-bold text-gray-900 mb-2">Staff Dashboard</h1>
-      <p className="text-gray-500 mb-10">
-        Live conversations and booking management — real-time wiring in Wave 1.
-      </p>
-
-      {/* Live conversations */}
-      <section className="mb-10">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">
-          Live Conversations
-          <span className="ml-2 text-xs font-normal text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
-            {mockConversations.filter((c) => c.status === "active").length} active
+    <div className="pd-admin">
+      <header className="pd-admin-head">
+        <div>
+          <div className="pd-eyebrow">Staff dashboard</div>
+          <h1 className="pd-admin-title">Tonight at PlayDesk</h1>
+        </div>
+        <div className="pd-admin-head-r">
+          <span className="pd-live">
+            <span className="pd-pulse" /> Live · updated{" "}
+            {updatedAgo === 0 ? "just now" : `${updatedAgo}s ago`}
           </span>
-        </h2>
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
-              <tr>
-                <th className="px-4 py-3 text-left">ID</th>
-                <th className="px-4 py-3 text-left">Customer</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-left">Messages</th>
-                <th className="px-4 py-3 text-left">Started</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {mockConversations.map((c) => (
-                <tr key={c.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono text-gray-400">#{c.id}</td>
-                  <td className="px-4 py-3 font-medium">{c.customer}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                        c.status === "active"
-                          ? "bg-green-50 text-green-700 border border-green-200"
-                          : "bg-gray-100 text-gray-500"
-                      }`}
-                    >
-                      {c.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{c.messages}</td>
-                  <td className="px-4 py-3 text-gray-500">{c.started}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="pd-admin-user">
+            <div className="pd-avatar pd-avatar--user">YS</div>
+            <div className="pd-admin-user-meta">
+              <div>Yuki S.</div>
+              <div className="pd-admin-user-role">Front desk · 工大店</div>
+            </div>
+          </div>
         </div>
-      </section>
+      </header>
 
-      {/* All bookings */}
-      <section>
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">All Bookings</h2>
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
-              <tr>
-                <th className="px-4 py-3 text-left">ID</th>
-                <th className="px-4 py-3 text-left">Customer</th>
-                <th className="px-4 py-3 text-left">Resource</th>
-                <th className="px-4 py-3 text-left">Time</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-left">Source</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {mockBookings.map((b) => (
-                <tr key={b.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono text-gray-400">#{b.id}</td>
-                  <td className="px-4 py-3 font-medium">{b.customer}</td>
-                  <td className="px-4 py-3 text-gray-700">{b.resource}</td>
-                  <td className="px-4 py-3 text-gray-500">{b.time}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                        b.status === "confirmed"
-                          ? "bg-green-50 text-green-700 border border-green-200"
-                          : "bg-yellow-50 text-yellow-700 border border-yellow-200"
-                      }`}
-                    >
-                      {b.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                        b.source === "agent"
-                          ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
-                          : "bg-gray-100 text-gray-600"
-                      }`}
-                    >
-                      {b.source}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {loadState === "loading" && <div className="pd-empty">Loading the dashboard…</div>}
+      {loadState === "error" && (
+        <div className="pd-error">
+          <span className="pd-error-dot" />
+          Couldn&apos;t reach the backend. Refresh to try again.
         </div>
-        <p className="text-xs text-gray-400 mt-2">
-          (Placeholder data — real-time API wiring in Wave 1)
-        </p>
-      </section>
+      )}
+
+      {loadState === "ready" && (
+        <>
+          <div className="pd-stat-grid">
+            <StatTile label="Today's bookings" value={stats.today} />
+            <StatTile label="Confirmed" value={stats.confirmed} accent="ok" />
+            <StatTile label="Pending payment" value={stats.pending_payment} accent="warn" />
+            <StatTile label="Active AI chats" value={stats.active_chats} accent="info" />
+          </div>
+
+          <div className="pd-admin-grid">
+            {/* Live conversations panel */}
+            <section className="pd-card">
+              <div className="pd-card-head">
+                <h2 className="pd-card-title">Live conversations</h2>
+                <span className="pd-card-sub">
+                  {conversations.filter((c) => c.status === "active").length} active
+                </span>
+              </div>
+              <div className="pd-conv-list">
+                {conversations.length === 0 && (
+                  <div className="pd-empty">No conversations yet.</div>
+                )}
+                {conversations.map((c) => (
+                  <button
+                    key={c.id}
+                    className={`pd-conv ${c.id === selectedConv ? "is-active" : ""} ${c.status === "closed" ? "is-closed" : ""}`}
+                    onClick={() => setSelectedConv(c.id)}
+                  >
+                    <div className="pd-conv-l">
+                      <div className={`pd-conv-state pd-conv-state--${c.status}`} />
+                      <div>
+                        <div className="pd-conv-id">{c.customer_identifier}</div>
+                        <div className="pd-conv-last">
+                          {c.status === "active" ? "Active session" : "Closed"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="pd-conv-r">
+                      <div className="pd-conv-time">{relTime(c.started_at)}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* Selected-conversation transcript */}
+            <section className="pd-card">
+              <div className="pd-card-head">
+                <h2 className="pd-card-title">
+                  {selectedConv !== null ? `Conversation #${selectedConv}` : "Conversation"}
+                </h2>
+                <span className="pd-card-sub">{activeConv?.customer_identifier}</span>
+              </div>
+              <ConversationPreview preview={preview} hasSelection={selectedConv !== null} />
+              <div className="pd-preview-foot">
+                <button className="pd-btn pd-btn--ghost pd-btn--sm">Take over</button>
+                <button className="pd-btn pd-btn--ghost pd-btn--sm">Mark resolved</button>
+              </div>
+            </section>
+          </div>
+
+          {/* Bookings table */}
+          <section className="pd-card">
+            <div className="pd-card-head pd-card-head--filters">
+              <div>
+                <h2 className="pd-card-title">All bookings</h2>
+                <span className="pd-card-sub">
+                  Newest first · {filtered.length} of {bookings.length}
+                </span>
+              </div>
+              <div className="pd-filters">
+                <label className="pd-search">
+                  <Icon.search size={14} />
+                  <input
+                    placeholder="Search name, phone, #id…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </label>
+                <FilterChips
+                  label="Status"
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                  options={[
+                    ["all", "All"],
+                    ["confirmed", "Confirmed"],
+                    ["pending_payment", "Pending payment"],
+                    ["pending", "Pending"],
+                    ["cancelled", "Cancelled"],
+                  ]}
+                />
+                <FilterChips
+                  label="Date"
+                  value={dateFilter}
+                  onChange={setDateFilter}
+                  options={[
+                    ["all", "Any"],
+                    ["today", "Today"],
+                    ["tomorrow", "Tomorrow"],
+                  ]}
+                />
+              </div>
+            </div>
+
+            <div className="pd-table">
+              <div className="pd-tr pd-tr--head">
+                <div className="pd-th">ID</div>
+                <div className="pd-th">Customer</div>
+                <div className="pd-th">Resource</div>
+                <div className="pd-th">When</div>
+                <div className="pd-th">Status</div>
+                <div className="pd-th">Source</div>
+                <div className="pd-th pd-th--right">Created</div>
+              </div>
+              {filtered.length === 0 && (
+                <div className="pd-table-empty">No bookings match these filters.</div>
+              )}
+              {filtered.map((b) => {
+                const r = resourceById[b.resource_id];
+                return (
+                  <div key={b.id} className={`pd-tr ${newIds.has(b.id) ? "is-new" : ""}`}>
+                    <div className="pd-td pd-mono pd-td-id">#{b.id}</div>
+                    <div className="pd-td">
+                      <div className="pd-td-strong">{b.customer_name}</div>
+                      <div className="pd-td-sub pd-mono">{b.customer_phone}</div>
+                    </div>
+                    <div className="pd-td">
+                      <div className="pd-td-resource">
+                        <span className="pd-td-rico">
+                          <ResourceIcon type={r?.type} size={14} />
+                        </span>
+                        {r?.name ?? `Resource #${b.resource_id}`}
+                      </div>
+                    </div>
+                    <div className="pd-td">
+                      <div className="pd-td-strong">{fmtDate(b.start_time)}</div>
+                      <div className="pd-td-sub pd-mono">
+                        {fmtTime(b.start_time)}–{fmtTime(b.end_time)}
+                      </div>
+                    </div>
+                    <div className="pd-td">
+                      <StatusBadge status={b.status} />
+                    </div>
+                    <div className="pd-td">
+                      <SourceBadge source={b.source} />
+                    </div>
+                    <div className="pd-td pd-td--right pd-td-sub">{relTime(b.created_at)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ConversationPreview({
+  preview,
+  hasSelection,
+}: {
+  preview: PreviewState;
+  hasSelection: boolean;
+}) {
+  if (!hasSelection) {
+    return <div className="pd-empty">Select a conversation to see its transcript.</div>;
+  }
+  if (preview.loading) {
+    return <div className="pd-empty">Loading transcript…</div>;
+  }
+  if (preview.error || !preview.data) {
+    return (
+      <div className="pd-error">
+        <span className="pd-error-dot" />
+        Couldn&apos;t load this conversation.
+      </div>
+    );
+  }
+  const messages = preview.data.messages ?? [];
+  if (messages.length === 0) {
+    return <div className="pd-empty">No messages in this conversation yet.</div>;
+  }
+  return (
+    <div className="pd-preview-body">
+      {messages.map((m) => (
+        <PreviewMsg
+          key={m.id}
+          role={m.role === "user" ? "user" : "ai"}
+          text={m.content}
+          tool={m.role === "tool" ? "tool result" : undefined}
+        />
+      ))}
+    </div>
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number;
+  accent?: "ok" | "warn" | "info";
+}) {
+  return (
+    <div className={`pd-stat ${accent ? `pd-stat--${accent}` : ""}`}>
+      <div className="pd-stat-label">{label}</div>
+      <div className="pd-stat-value pd-mono">{value}</div>
+    </div>
+  );
+}
+
+function FilterChips({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: [string, string][];
+}) {
+  return (
+    <div className="pd-filter">
+      <span className="pd-filter-label">{label}</span>
+      <div className="pd-seg pd-seg--sm">
+        {options.map(([k, l]) => (
+          <button
+            key={k}
+            className={`pd-seg-item ${value === k ? "is-active" : ""}`}
+            onClick={() => onChange(k)}
+          >
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PreviewMsg({
+  role,
+  text,
+  tool,
+}: {
+  role: "user" | "ai";
+  text: string;
+  tool?: string;
+}) {
+  return (
+    <div className={`pd-pmsg pd-pmsg--${role}`}>
+      {tool && <span className="pd-pmsg-tool">{tool}</span>}
+      <div className="pd-pmsg-text">{text}</div>
     </div>
   );
 }
