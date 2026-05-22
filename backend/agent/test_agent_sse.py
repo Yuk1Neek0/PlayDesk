@@ -64,7 +64,11 @@ def client():
 
 
 @pytest.fixture()
-def conversation(db):
+def conversation(transactional_db):
+    # transactional_db (not db): the SSE view drives the agent loop on a
+    # background thread with its own DB connection, so the conversation must
+    # be committed — not held in an uncommitted test transaction — to be
+    # visible to that thread.
     from core.models import Conversation, ConversationStatus
 
     return Conversation.objects.create(

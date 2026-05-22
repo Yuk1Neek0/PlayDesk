@@ -9,6 +9,8 @@ Routes (defined in agent/urls.py):
 from __future__ import annotations
 
 import json
+import queue
+import threading
 from collections.abc import Generator
 from typing import Any
 
@@ -33,6 +35,9 @@ def _sse_event(event_type: str, payload: dict[str, Any]) -> str:
     return f"event: {event_type}\ndata: {data}\n\n"
 
 
+_STREAM_DONE = object()  # sentinel: agent loop finished
+
+
 def _run_agent_stream(
     conversation: Conversation,
     user_content: str,
@@ -41,12 +46,15 @@ def _run_agent_stream(
     """
     Generator that drives the agent loop and yields SSE-formatted strings.
 
-    The loop emits events via callback; we collect them in a queue and yield.
+    The loop runs in a background thread and emits events via callback into a
+    thread-safe queue; this generator yields each event to the client as soon
+    as it is produced, so tokens stream incrementally rather than buffering
+    until the loop completes.
     """
-    event_queue: list[tuple[str, dict[str, Any]]] = []
+    event_queue: queue.Queue[Any] = queue.Queue()
 
     def on_event(event_type: str, payload: dict[str, Any]) -> None:
-        event_queue.append((event_type, payload))
+        event_queue.put((event_type, payload))
 
     llm_client = AnthropicClient(
         api_key=getattr(settings, "ANTHROPIC_API_KEY", ""),
@@ -58,24 +66,45 @@ def _run_agent_stream(
         event_callback=on_event,
     )
 
-    try:
-        loop.run(conversation, user_content)
-    except RuntimeError as exc:
-        # LLM unavailable after retries — error event already emitted by loop
-        # Emit it here in case the loop raised before emitting
-        yield _sse_event(
-            "error",
-            {
-                "code": "llm_unavailable",
-                "detail": str(exc),
-                "retryable": True,
-            },
-        )
-        return
+    def _drive() -> None:
+        try:
+            loop.run(conversation, user_content)
+        except RuntimeError as exc:
+            # LLM unavailable after retries — surface as an SSE error event in
+            # case the loop raised before emitting one itself.
+            event_queue.put(
+                (
+                    "error",
+                    {
+                        "code": "llm_unavailable",
+                        "detail": str(exc),
+                        "retryable": True,
+                    },
+                )
+            )
+        finally:
+            # This worker thread owns its own DB connection(s); close them so
+            # they are not leaked (and do not block test-DB teardown) when the
+            # thread exits.
+            from django.db import connections
 
-    # Yield all collected events
-    for event_type, payload in event_queue:
-        yield _sse_event(event_type, payload)
+            connections.close_all()
+            event_queue.put(_STREAM_DONE)
+
+    worker = threading.Thread(target=_drive, daemon=True)
+    worker.start()
+
+    try:
+        while True:
+            item = event_queue.get()
+            if item is _STREAM_DONE:
+                break
+            event_type, payload = item
+            yield _sse_event(event_type, payload)
+    finally:
+        # Always wait for the worker — even if the client disconnects early —
+        # so its DB connection is closed before the request/test completes.
+        worker.join()
 
 
 # ---------------------------------------------------------------------------
