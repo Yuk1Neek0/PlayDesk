@@ -13,6 +13,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# `rewrites()` is evaluated at build time and baked into routes-manifest.json,
+# so the backend proxy target must be supplied as a build arg.
+ARG BACKEND_ORIGIN=http://127.0.0.1:8000
+ENV BACKEND_ORIGIN=$BACKEND_ORIGIN
 RUN npm run build
 
 # ---- runner stage ----

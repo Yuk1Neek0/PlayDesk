@@ -4,7 +4,7 @@
 // `EventSource` cannot send a POST body, so we use `fetch` + the response
 // `ReadableStream` and parse the W3C SSE framing ourselves.
 
-import { API_BASE_URL, ApiError } from "./api";
+import { API_BASE_URL, ApiError, withTrailingSlash } from "./api";
 import type { SSEEvent } from "@/types/sse-events";
 
 const KNOWN_EVENTS = new Set([
@@ -55,7 +55,9 @@ export async function* streamMessage(
   signal?: AbortSignal,
 ): AsyncGenerator<SSEEvent> {
   const response = await fetch(
-    `${API_BASE_URL}/api/conversations/${conversationId}/messages`,
+    `${API_BASE_URL}${withTrailingSlash(
+      `/api/conversations/${conversationId}/messages`,
+    )}`,
     {
       method: "POST",
       credentials: "include",

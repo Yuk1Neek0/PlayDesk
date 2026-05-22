@@ -7,8 +7,11 @@
 
 import type { components } from "@/types/api";
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+// Empty by default: requests are same-origin and `/api/*` is proxied to the
+// backend by the Next.js rewrite in `next.config.mjs` (the backend ships no
+// CORS headers, so the browser cannot call it cross-origin directly). An
+// explicit `NEXT_PUBLIC_API_BASE_URL` can still override this if needed.
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 type Schemas = components["schemas"];
 
@@ -54,8 +57,20 @@ function queryString(params?: QueryParams): string {
   return serialized ? `?${serialized}` : "";
 }
 
+/**
+ * Django's URLConf registers every route with a trailing slash and, with
+ * `APPEND_SLASH` on, 301-redirects slash-less GETs and *rejects* slash-less
+ * POST/PATCH/DELETE (the body cannot be replayed across a redirect). The
+ * OpenAPI contract omits the slash, so normalise it here on every request.
+ */
+export function withTrailingSlash(path: string): string {
+  const [route, query = ""] = path.split("?");
+  const normalised = route.endsWith("/") ? route : `${route}/`;
+  return query ? `${normalised}?${query}` : normalised;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${API_BASE_URL}${withTrailingSlash(path)}`, {
     ...init,
     credentials: "include",
     headers: {

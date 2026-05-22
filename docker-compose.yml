@@ -55,10 +55,16 @@ services:
   # Next.js frontend  (Dockerfile created by the frontend agent)
   # -------------------------------------------------------------------------
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # `rewrites()` bakes the proxy target at build time.
+        BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:8000}
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      # Server-side target for the Next.js `/api/*` rewrite proxy.
+      BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:8000}
     ports:
       - "3000:3000"
     depends_on:
