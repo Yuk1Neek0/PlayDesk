@@ -101,8 +101,10 @@ class TestCheckoutSession:
         from core.payments import create_checkout_session
 
         booking = _make_booking(resource, "pending_payment", 10)
-        # Default settings leave STRIPE_SECRET_KEY empty.
-        assert create_checkout_session(booking) is None
+        # Force the unconfigured state explicitly — the ambient environment
+        # may carry a real STRIPE_SECRET_KEY.
+        with override_settings(STRIPE_SECRET_KEY=""):
+            assert create_checkout_session(booking) is None
 
     def test_session_carries_the_booking_id_in_metadata(self, resource):
         from core.payments import create_checkout_session
