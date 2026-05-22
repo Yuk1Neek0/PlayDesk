@@ -37,6 +37,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - ./backend:/app
+      - ./knowledge-base:/knowledge-base:ro
     ports:
       - "8000:8000"
     depends_on:
@@ -45,6 +46,7 @@ services:
     command: >
       sh -c "python manage.py migrate &&
              python manage.py seed_data &&
+             python manage.py ingest_kb &&
              python manage.py runserver 0.0.0.0:8000"
 
   # -------------------------------------------------------------------------
