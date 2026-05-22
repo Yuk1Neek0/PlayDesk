@@ -137,9 +137,7 @@ def _completed_event(booking_id) -> dict:
 @pytest.mark.django_db
 class TestStripeWebhook:
     def _post(self):
-        return Client().post(
-            "/api/webhooks/stripe/", data=b"{}", content_type="application/json"
-        )
+        return Client().post("/api/webhooks/stripe/", data=b"{}", content_type="application/json")
 
     def test_checkout_completed_confirms_the_booking(self, resource):
         from core.models import BookingStatus
@@ -199,9 +197,7 @@ class TestExpireHolds:
         from core.models import Booking, BookingStatus
 
         booking = _make_booking(resource, BookingStatus.PENDING_PAYMENT, 10)
-        Booking.objects.filter(pk=booking.pk).update(
-            created_at=timezone.now() - timedelta(hours=2)
-        )
+        Booking.objects.filter(pk=booking.pk).update(created_at=timezone.now() - timedelta(hours=2))
 
         call_command("expire_holds")
 

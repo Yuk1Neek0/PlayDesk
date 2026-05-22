@@ -60,8 +60,6 @@ def verify_webhook_event(payload: bytes, signature: str) -> dict:
     failure means the request must be rejected.
     """
     try:
-        return stripe.Webhook.construct_event(
-            payload, signature, settings.STRIPE_WEBHOOK_SECRET
-        )
+        return stripe.Webhook.construct_event(payload, signature, settings.STRIPE_WEBHOOK_SECRET)
     except Exception as exc:  # noqa: BLE001
         raise ValueError(f"Invalid Stripe webhook: {exc}") from exc

@@ -411,9 +411,7 @@ def stripe_webhook(request):
     from core.payments import verify_webhook_event
 
     try:
-        event = verify_webhook_event(
-            request.body, request.META.get("HTTP_STRIPE_SIGNATURE", "")
-        )
+        event = verify_webhook_event(request.body, request.META.get("HTTP_STRIPE_SIGNATURE", ""))
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
@@ -421,8 +419,8 @@ def stripe_webhook(request):
         session = event.get("data", {}).get("object", {})
         booking_id = (session.get("metadata") or {}).get("booking_id")
         if booking_id:
-            Booking.objects.filter(
-                pk=booking_id, status=BookingStatus.PENDING_PAYMENT
-            ).update(status=BookingStatus.CONFIRMED)
+            Booking.objects.filter(pk=booking_id, status=BookingStatus.PENDING_PAYMENT).update(
+                status=BookingStatus.CONFIRMED
+            )
 
     return JsonResponse({"received": True})
