@@ -1,0 +1,5 @@
+# Dependencies for the PlayDesk integrity test (HTTP/SSE layer).
+# Deliberately tiny — this layer talks to the running stack over HTTP only,
+# with no Django imports.
+httpx==0.28.1
+pytest==8.3.3
