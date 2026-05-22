@@ -14,12 +14,23 @@ import type { DoneEvent, StreamErrorEvent } from "@/types/sse-events";
 
 export type ChatStreamStatus = "idle" | "streaming" | "done" | "error";
 
+/** A tool call seen on the stream, kept across the whole turn for the UI. */
+export interface ToolHint {
+  /** `tool_call_id` from the SSE protocol. */
+  id: string;
+  /** Registered tool name, e.g. `check_availability`. */
+  name: string;
+  status: "running" | "done";
+}
+
 export interface ChatStreamState {
   status: ChatStreamStatus;
   /** Assistant text accumulated from `token` events. */
   text: string;
   /** `tool_name` of the running tool call, or null when none is in flight. */
   activeTool: string | null;
+  /** Every tool call from this turn, in order, with its running/done status. */
+  tools: ToolHint[];
   /** Payload of the terminal `done` event, once received. */
   result: DoneEvent | null;
   /** Payload of a terminal `error` event or a transport failure. */
@@ -30,6 +41,7 @@ const INITIAL_STATE: ChatStreamState = {
   status: "idle",
   text: "",
   activeTool: null,
+  tools: [],
   result: null,
   error: null,
 };
@@ -64,10 +76,27 @@ export function useChatStream(): ChatStream {
               setState((s) => ({ ...s, text: s.text + event.data.delta }));
               break;
             case "tool_call_start":
-              setState((s) => ({ ...s, activeTool: event.data.tool_name }));
+              setState((s) => ({
+                ...s,
+                activeTool: event.data.tool_name,
+                tools: [
+                  ...s.tools,
+                  {
+                    id: event.data.tool_call_id,
+                    name: event.data.tool_name,
+                    status: "running",
+                  },
+                ],
+              }));
               break;
             case "tool_call_end":
-              setState((s) => ({ ...s, activeTool: null }));
+              setState((s) => ({
+                ...s,
+                activeTool: null,
+                tools: s.tools.map((t) =>
+                  t.id === event.data.tool_call_id ? { ...t, status: "done" } : t,
+                ),
+              }));
               break;
             case "done":
               setState((s) => ({

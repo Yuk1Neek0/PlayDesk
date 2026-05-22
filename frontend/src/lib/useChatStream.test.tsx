@@ -94,6 +94,40 @@ describe("useChatStream", () => {
     expect(result.current.status).toBe("done");
   });
 
+  it("accumulates tool calls in order, marking each done on its end event", async () => {
+    mockStream.mockReturnValue(
+      fakeStream([
+        {
+          type: "tool_call_start",
+          data: { tool_call_id: "t1", tool_name: "check_availability", arguments: {} },
+        },
+        {
+          type: "tool_call_end",
+          data: { tool_call_id: "t1", tool_name: "check_availability", result: {}, error: null },
+        },
+        {
+          type: "tool_call_start",
+          data: { tool_call_id: "t2", tool_name: "create_booking", arguments: {} },
+        },
+        {
+          type: "tool_call_end",
+          data: { tool_call_id: "t2", tool_name: "create_booking", result: {}, error: null },
+        },
+        doneEvent,
+      ]),
+    );
+
+    const { result } = renderHook(() => useChatStream());
+    await act(async () => {
+      await result.current.send(1, "book it");
+    });
+
+    expect(result.current.tools).toEqual([
+      { id: "t1", name: "check_availability", status: "done" },
+      { id: "t2", name: "create_booking", status: "done" },
+    ]);
+  });
+
   it("surfaces a server error event", async () => {
     mockStream.mockReturnValue(
       fakeStream([

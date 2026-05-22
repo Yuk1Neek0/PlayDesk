@@ -1,48 +1,25 @@
 "use client";
 
-// AI front-desk chat — streaming replies, animated tool-call pills, inline
-// booking card. Ported from the Claude Design handoff
-// (playdeck/project/src/chat.jsx). Streaming and replies run on the
-// prototype's canned mock; wiring to the real SSE stream (useChatStream from
-// task #19) is the remaining work of task #21.
+// AI front-desk chat — UI ported from the Claude Design handoff, wired to the
+// live backend: a conversation is created via the REST client and the
+// assistant response is consumed from the real SSE stream through the
+// useChatStream hook (#19). Streaming tokens and in-flight tool-call hints
+// render as they arrive; the composer never blocks. This completes task #21.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { Icon } from "@/components/pd-ui";
-
-type ToolState = "running" | "done";
-
-interface ToolCall {
-  name: string;
-  result?: string;
-  duration?: number;
-  state?: ToolState;
-}
-
-interface ChatBooking {
-  id: number;
-  resource: string;
-  date: string;
-  time: string;
-  total: string;
-}
+import { createConversation } from "@/lib/api";
+import { useChatStream, type ToolHint } from "@/lib/useChatStream";
 
 interface Message {
   id: number;
   role: "user" | "assistant";
   content: string;
-  tools: ToolCall[];
-  streaming: boolean;
-  booking: ChatBooking | null;
-  suggestions: string[] | null;
-}
-
-interface Reply {
-  tools: ToolCall[];
-  text: string;
-  booking?: ChatBooking;
-  suggestions?: string[];
+  tools: ToolHint[];
+  /** booking_id from the stream's `done` event, when a booking was made. */
+  booking: number | null;
 }
 
 const SUGGESTIONS = [
@@ -52,101 +29,85 @@ const SUGGESTIONS = [
   "How late are you open?",
 ];
 
-export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+const GREETING =
+  "Hi — I'm the PlayDesk front desk. I can check availability, answer " +
+  "questions about consoles, rooms or board games, and finish a booking " +
+  "with you in a single chat. What are we doing tonight?";
 
-  // Keep the transcript pinned to the latest message as it grows/streams.
+export default function ChatPage() {
+  const [messages, setMessages] = useState<Message[]>(() => [
+    { id: 1, role: "assistant", content: GREETING, tools: [], booking: null },
+  ]);
+  const [input, setInput] = useState("");
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const idRef = useRef(2);
+
+  const { status, text, tools, result, error, send: streamSend } = useChatStream();
+  const streaming = status === "streaming";
+
+  // Re-pin the transcript to the bottom as it grows or the stream advances.
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && messages.length) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+    if (el && (messages.length || text || status)) el.scrollTop = el.scrollHeight;
+  }, [messages, text, status]);
 
-  function send(text: string) {
-    if (!text.trim() || streaming) return;
-    const trimmed = text.trim();
-    setMessages((m) => [
-      ...m,
-      { id: Date.now(), role: "user", content: trimmed, tools: [], streaming: false, booking: null, suggestions: null },
-    ]);
+  function nextId() {
+    return idRef.current++;
+  }
+
+  async function send(raw: string) {
+    const content = raw.trim();
+    if (!content || streaming) return;
+
+    // The previous assistant turn (if any) is finished — commit it to history
+    // before the hook is reset by the next stream.
+    const carried: Message[] =
+      status === "done" && result
+        ? [
+            {
+              id: nextId(),
+              role: "assistant",
+              content: result.text,
+              tools,
+              booking: result.booking_id,
+            },
+          ]
+        : [];
+    const userMsg: Message = { id: nextId(), role: "user", content, tools: [], booking: null };
+    setMessages((m) => [...m, ...carried, userMsg]);
     setInput("");
-    setStreaming(true);
-    setTimeout(() => respondTo(trimmed), 350);
-  }
 
-  function respondTo(userText: string) {
-    const reply = pickReply(userText);
-    const aid = Date.now() + 1;
-    setMessages((m) => [
-      ...m,
-      { id: aid, role: "assistant", content: "", tools: [], streaming: true, booking: null, suggestions: null },
-    ]);
-    runStream(aid, reply);
-  }
-
-  // Walk the reply's tool calls one at a time (running → done), then stream text.
-  function runStream(aid: number, reply: Reply) {
-    let toolIdx = 0;
-    function nextTool() {
-      if (toolIdx >= reply.tools.length) {
-        streamText(aid, reply);
+    let cid = conversationId;
+    if (cid === null) {
+      try {
+        cid = (await createConversation()).id;
+        setConversationId(cid);
+      } catch {
+        setMessages((m) => [
+          ...m,
+          {
+            id: nextId(),
+            role: "assistant",
+            content: "Sorry — I couldn't start a session just now. Please try again.",
+            tools: [],
+            booking: null,
+          },
+        ]);
         return;
       }
-      const tool = reply.tools[toolIdx++];
-      setMessages((m) =>
-        m.map((x) => (x.id === aid ? { ...x, tools: [...x.tools, { ...tool, state: "running" }] } : x)),
-      );
-      setTimeout(() => {
-        setMessages((m) =>
-          m.map((x) =>
-            x.id === aid
-              ? {
-                  ...x,
-                  tools: x.tools.map((t, i) =>
-                    i === x.tools.length - 1 ? { ...t, state: "done" } : t,
-                  ),
-                }
-              : x,
-          ),
-        );
-        setTimeout(nextTool, 250);
-      }, tool.duration ?? 850);
     }
-    nextTool();
+    streamSend(cid, content);
   }
 
-  // Reveal the reply text token by token.
-  function streamText(aid: number, reply: Reply) {
-    const tokens = reply.text.split(/(\s+)/);
-    let i = 0;
-    function tick() {
-      i += 1;
-      const partial = tokens.slice(0, i).join("");
-      setMessages((m) => m.map((x) => (x.id === aid ? { ...x, content: partial } : x)));
-      if (i < tokens.length) {
-        setTimeout(tick, 22 + Math.random() * 18);
-      } else {
-        setMessages((m) =>
-          m.map((x) =>
-            x.id === aid
-              ? {
-                  ...x,
-                  streaming: false,
-                  booking: reply.booking ?? null,
-                  suggestions: reply.suggestions ?? null,
-                }
-              : x,
-          ),
-        );
-        setStreaming(false);
-      }
-    }
-    tick();
+  function retry() {
+    if (conversationId === null) return;
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    if (lastUser) streamSend(conversationId, lastUser.content);
   }
 
-  const last = messages[messages.length - 1];
+  // The in-flight / just-finished assistant turn, rendered live from the hook.
+  const showLive = (status === "streaming" || status === "done") && (text || tools.length > 0);
 
   return (
     <div className="pd-page pd-page--chat">
@@ -169,9 +130,25 @@ export default function ChatPage() {
 
       <div className="pd-chat-transcript" ref={scrollRef}>
         {messages.map((m) => (
-          <Bubble key={m.id} msg={m} onPickSlot={(s) => send(`Book that — ${s}`)} />
+          <Bubble
+            key={m.id}
+            role={m.role}
+            content={m.content}
+            tools={m.tools}
+            booking={m.booking}
+            streaming={false}
+          />
         ))}
-        {last?.streaming && (
+        {showLive && (
+          <Bubble
+            role="assistant"
+            content={text}
+            tools={tools}
+            booking={status === "done" ? result?.booking_id ?? null : null}
+            streaming={streaming}
+          />
+        )}
+        {streaming && !text && tools.length === 0 && (
           <div className="pd-chat-typing-row">
             <div className="pd-avatar pd-avatar--ai pd-avatar--sm" aria-hidden>
               <Icon.spark size={12} />
@@ -182,6 +159,13 @@ export default function ChatPage() {
               <i />
             </span>
           </div>
+        )}
+        {status === "error" && (
+          <ErrorBubble
+            detail={error?.detail ?? "Something went wrong."}
+            retryable={error?.retryable ?? true}
+            onRetry={retry}
+          />
         )}
       </div>
 
@@ -222,11 +206,23 @@ export default function ChatPage() {
   );
 }
 
-function Bubble({ msg, onPickSlot }: { msg: Message; onPickSlot: (s: string) => void }) {
-  if (msg.role === "user") {
+function Bubble({
+  role,
+  content,
+  tools,
+  booking,
+  streaming,
+}: {
+  role: "user" | "assistant";
+  content: string;
+  tools: ToolHint[];
+  booking: number | null;
+  streaming: boolean;
+}) {
+  if (role === "user") {
     return (
       <div className="pd-chat-row pd-chat-row--user">
-        <div className="pd-bubble pd-bubble--user">{msg.content}</div>
+        <div className="pd-bubble pd-bubble--user">{content}</div>
         <div className="pd-avatar pd-avatar--user" aria-hidden>
           You
         </div>
@@ -239,42 +235,32 @@ function Bubble({ msg, onPickSlot }: { msg: Message; onPickSlot: (s: string) => 
         <Icon.spark size={14} />
       </div>
       <div className="pd-chat-col">
-        {msg.tools.length > 0 && (
+        {tools.length > 0 && (
           <div className="pd-tools">
-            {msg.tools.map((t, i) => (
-              <span key={i} className={`pd-tool pd-tool--${t.state ?? "running"}`}>
+            {tools.map((t) => (
+              <span key={t.id} className={`pd-tool pd-tool--${t.status}`}>
                 <span className="pd-tool-ico">
-                  {t.state === "done" ? <Icon.check size={11} /> : <span className="pd-tool-spin" />}
+                  {t.status === "done" ? <Icon.check size={11} /> : <span className="pd-tool-spin" />}
                 </span>
                 <span className="pd-tool-name">{t.name}</span>
-                {t.state === "running" && <span>…</span>}
-                {t.state === "done" && t.result && <span className="pd-tool-res">{t.result}</span>}
+                {t.status === "running" && <span>…</span>}
               </span>
             ))}
           </div>
         )}
-        {msg.content && (
+        {content && (
           <div className="pd-bubble pd-bubble--ai">
-            {msg.content}
-            {msg.streaming && <span className="pd-caret" />}
+            {content}
+            {streaming && <span className="pd-caret" />}
           </div>
         )}
-        {msg.suggestions && (
-          <div className="pd-slot-suggest">
-            {msg.suggestions.map((s) => (
-              <button key={s} className="pd-chip pd-chip--suggest" onClick={() => onPickSlot(s)}>
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-        {msg.booking && <BookingCard b={msg.booking} />}
+        {booking !== null && <BookingCard id={booking} />}
       </div>
     </div>
   );
 }
 
-function BookingCard({ b }: { b: ChatBooking }) {
+function BookingCard({ id }: { id: number }) {
   return (
     <div className="pd-bcard">
       <div className="pd-bcard-head">
@@ -283,25 +269,7 @@ function BookingCard({ b }: { b: ChatBooking }) {
         </div>
         <div>
           <div className="pd-bcard-title">Booking confirmed</div>
-          <div className="pd-bcard-id">#{b.id} · payment link sent by SMS</div>
-        </div>
-      </div>
-      <div className="pd-bcard-grid">
-        <div>
-          <span className="pd-bcard-k">Resource</span>
-          <span>{b.resource}</span>
-        </div>
-        <div>
-          <span className="pd-bcard-k">Date</span>
-          <span>{b.date}</span>
-        </div>
-        <div>
-          <span className="pd-bcard-k">Time</span>
-          <span className="pd-mono">{b.time}</span>
-        </div>
-        <div>
-          <span className="pd-bcard-k">Total</span>
-          <span className="pd-mono">¥ {b.total}</span>
+          <div className="pd-bcard-id">#{id} · payment link sent by SMS</div>
         </div>
       </div>
       <div className="pd-bcard-actions">
@@ -312,71 +280,33 @@ function BookingCard({ b }: { b: ChatBooking }) {
   );
 }
 
-function initialMessages(): Message[] {
-  return [
-    {
-      id: 1,
-      role: "assistant",
-      streaming: false,
-      tools: [],
-      booking: null,
-      suggestions: null,
-      content:
-        "Hi — I'm the PlayDesk front desk. I can check availability, answer questions about consoles, rooms or board games, and finish a booking with you in a single chat. What are we doing tonight?",
-    },
-  ];
-}
-
-// Canned reply keyed off message keywords — stands in for the real agent loop.
-function pickReply(q: string): Reply {
-  const lower = q.toLowerCase();
-  if (lower.includes("ps5") && /sat|saturday|8\s?pm|20:00/.test(lower)) {
-    return {
-      tools: [
-        { name: "check_availability", result: "Sat 23 May · PS5 A & B", duration: 900 },
-        { name: "lookup_price", result: "¥58/hr · 2 pads", duration: 600 },
-      ],
-      text:
-        "Saturday 23 May at 20:00 — PS5 Station · A is free for up to 3 hours. ¥58/hr, two pads included. Should I lock in 2 hours under your number?",
-      suggestions: ["20:00–22:00", "19:00–22:00", "20:00–23:00"],
-    };
-  }
-  if (lower.includes("switch")) {
-    return {
-      tools: [
-        { name: "check_availability", result: "Switch Station · today", duration: 850 },
-        { name: "create_booking", result: "#4131 · pending payment", duration: 1200 },
-      ],
-      text:
-        "Done — I've reserved the Switch Station for 4 players, tonight 19:00–21:00. Total ¥96. Pay within 10 minutes to lock it in; I'll text you the link.",
-      booking: { id: 4131, resource: "Switch Station", date: "Thu 21 May 2026", time: "19:00 – 21:00", total: "96" },
-    };
-  }
-  if (lower.includes("board") || lower.includes("catan") || lower.includes("game")) {
-    return {
-      tools: [{ name: "search_catalog", result: "180 titles · 6 free tables", duration: 750 }],
-      text:
-        "We've got 180 board games on the shelf — Catan, Wingspan, Azul, Spirit Island, Root… Tonight there are 6 tables open from 19:00 onward. ¥38/hr per table, up to 6 players. Want me to grab one?",
-    };
-  }
-  if (lower.includes("open") || lower.includes("late") || lower.includes("hour")) {
-    return {
-      tools: [{ name: "lookup_policy", result: "business_hours.zh", duration: 500 }],
-      text:
-        "We're open 10:00 – 02:00, every day of the week. Last booking start is 23:00. Weekend nights fill up fast — happy to grab a slot now?",
-    };
-  }
-  if (lower.includes("price") || lower.includes("cost") || lower.includes("how much") || lower.includes("¥")) {
-    return {
-      tools: [{ name: "lookup_price", result: "rate sheet", duration: 600 }],
-      text:
-        "PS5 / Switch consoles start at ¥48/hr. Private rooms ¥188–¥248/hr (fits 6–8). Board‑game tables ¥38/hr. Members get 10% off after 22:00 — want me to enroll you?",
-    };
-  }
-  return {
-    tools: [{ name: "understand_intent", result: "low confidence", duration: 700 }],
-    text:
-      "Got it — to help fastest, tell me what (PS5 / Switch / private room / board games), when, and how many people. Or pick a quick suggestion below.",
-    suggestions: ["PS5 tonight 8 pm", "Private room Saturday", "Switch for 4 now"],
-  };
+function ErrorBubble({
+  detail,
+  retryable,
+  onRetry,
+}: {
+  detail: string;
+  retryable: boolean;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="pd-chat-row pd-chat-row--ai">
+      <div className="pd-avatar pd-avatar--ai" aria-hidden>
+        <Icon.spark size={14} />
+      </div>
+      <div className="pd-chat-col">
+        <div className="pd-error">
+          <span className="pd-error-dot" />
+          {detail}
+        </div>
+        {retryable && (
+          <div>
+            <button className="pd-btn pd-btn--ghost pd-btn--sm" onClick={onRetry}>
+              Retry
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
