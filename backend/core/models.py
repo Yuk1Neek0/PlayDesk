@@ -11,6 +11,7 @@ from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import RangeOperators
 from django.db import models
 from django.db.models.expressions import Func, Value
+from django.utils.text import slugify
 from pgvector.django import HnswIndex, VectorField
 
 
@@ -29,14 +30,37 @@ class TsTzRange(Func):
 # ---------------------------------------------------------------------------
 class Store(models.Model):
     name = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=64, unique=True, blank=True)
     timezone = models.CharField(max_length=64, default="UTC")
     business_hours = models.JSONField(default=dict)
+    # Brand carries optional `logo_url` and `accent` (oklch override) — read
+    # by the public /qr/[slug] page. Free-form so future branding fields
+    # don't need a migration.
+    brand = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["name"]
 
     def __str__(self) -> str:
         return self.name
+
+    def save(self, *args, **kwargs):
+        """Auto-fill `slug` from `name` on first save.
+
+        Existing callers don't know about slug — including the seed
+        command and every test fixture — so the field has to populate
+        itself. Collisions get a `-2`, `-3`, ... suffix.
+        """
+        if not self.slug:
+            base = slugify(self.name) or f"store-{self.pk or 'new'}"
+            candidate = base
+            n = 2
+            qs = type(self).objects.exclude(pk=self.pk)
+            while qs.filter(slug=candidate).exists():
+                candidate = f"{base}-{n}"
+                n += 1
+            self.slug = candidate
+        super().save(*args, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +157,93 @@ class CustomerNote(models.Model):
 
     def __str__(self) -> str:
         return f"Note on {self.customer_id} ({self.created_at:%Y-%m-%d})"
+
+
+# ---------------------------------------------------------------------------
+# QRAction + QREvent (One QR engagement)
+# ---------------------------------------------------------------------------
+class QRActionKind(models.TextChoices):
+    REVIEW = "review", "Google review"
+    INSTAGRAM = "instagram", "Instagram"
+    TIKTOK = "tiktok", "TikTok"
+    REDNOTE = "rednote", "RedNote"
+    WECHAT = "wechat", "WeChat"
+    WIFI = "wifi", "Store WiFi"
+    CUSTOM = "custom", "Custom"
+
+
+class QRAction(models.Model):
+    """A single chip on a store's One-QR landing page.
+
+    Per-store ordering via `position`; unique on `(store, position)` so the
+    public page render is deterministic. Reordering in admin is atomic
+    (transaction-wrapped position re-write) — see api.views.
+    """
+
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="qr_actions")
+    kind = models.CharField(max_length=16, choices=QRActionKind.choices)
+    label = models.CharField(max_length=80)
+    target_url = models.URLField(max_length=500)
+    position = models.PositiveIntegerField()
+    reward_points = models.PositiveIntegerField(default=0)
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["store", "position"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["store", "position"], name="qraction_unique_store_position"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.store.name} #{self.position} – {self.label}"
+
+
+class QREventKind(models.TextChoices):
+    SCAN = "scan", "Scan"
+    CLICK = "click", "Click"
+
+
+class QREvent(models.Model):
+    """A scan of the QR or a click on one of its actions.
+
+    Scan events have ``action`` NULL (the QR itself was scanned, no
+    chip was tapped). Click events carry the tapped action. The
+    customer FK is optional — set when the request carries a
+    pd_customer cookie that matches a real Customer.
+    """
+
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="qr_events")
+    action = models.ForeignKey(
+        QRAction,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="events",
+    )
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="qr_events",
+    )
+    kind = models.CharField(max_length=8, choices=QREventKind.choices)
+    user_agent = models.CharField(max_length=255, blank=True)
+    locale = models.CharField(max_length=8, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["store", "-created_at"]),
+            models.Index(fields=["action", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.kind} on {self.action_id or 'qr'} ({self.created_at:%Y-%m-%d})"
 
 
 # ---------------------------------------------------------------------------
