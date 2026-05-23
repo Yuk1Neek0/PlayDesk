@@ -22,11 +22,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decide whether to spend LLM tokens on this run. Pushes to main, scheduled
+  # nightly runs, and manual dispatches always exercise the full stack.
+  # Pull requests only do so when they touch agent / RAG / chat / SSE code —
+  # docs-only and style-only PRs run the contract suite without keys.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run_llm: ${{ steps.decide.outputs.run_llm }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            llm_paths:
+              - 'backend/agent/**'
+              - 'backend/agent_tools/**'
+              - 'backend/rag/**'
+              - 'backend/core/models.py'
+              - 'backend/api/**'
+              - 'frontend/src/app/chat/**'
+              - 'frontend/src/lib/useChatStream*'
+              - 'integration/**'
+              - 'frontend/e2e/**'
+              - 'docs/contracts/sse-protocol.md'
+              - 'docs/contracts/openapi.yaml'
+              - '.github/workflows/integrity.yml'
+      - id: decide
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ] || [ "${{ steps.filter.outputs.llm_paths }}" = "true" ]; then
+            echo "run_llm=true" >> "$GITHUB_OUTPUT"
+            echo "LLM-gated tests: ENABLED (event=${{ github.event_name }}, llm_paths=${{ steps.filter.outputs.llm_paths }})"
+          else
+            echo "run_llm=false" >> "$GITHUB_OUTPUT"
+            echo "LLM-gated tests: SKIPPED — no agent/RAG/chat/SSE paths touched in this PR."
+          fi
+
   integrity:
+    needs: gate
     runs-on: ubuntu-latest
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # LLM keys are only exposed when the gate says so. Empty values cause
+      # the agent SSE endpoint to fail cleanly, which makes the LLM-gated
+      # integration and e2e tests pytest.skip / test.skip themselves.
+      OPENAI_API_KEY: ${{ needs.gate.outputs.run_llm == 'true' && secrets.OPENAI_API_KEY || '' }}
+      ANTHROPIC_API_KEY: ${{ needs.gate.outputs.run_llm == 'true' && secrets.ANTHROPIC_API_KEY || '' }}
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v4
@@ -74,8 +115,9 @@ jobs:
         working-directory: frontend
         env:
           PLAYDESK_WEB: http://localhost:3000
-          # Empty when no LLM secret is set — the agent journeys then skip.
-          PLAYDESK_LLM: ${{ secrets.ANTHROPIC_API_KEY != '' && '1' || '' }}
+          # Empty when the gate said no, or when no LLM secret is configured.
+          # The agent E2E tests in semantic.e2e.ts and chat.e2e.ts then skip.
+          PLAYDESK_LLM: ${{ needs.gate.outputs.run_llm == 'true' && secrets.ANTHROPIC_API_KEY != '' && '1' || '' }}
         run: |
           npm ci
           npx playwright install --with-deps chromium
