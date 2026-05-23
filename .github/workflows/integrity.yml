@@ -32,7 +32,11 @@ jobs:
       run_llm: ${{ steps.decide.outputs.run_llm }}
     steps:
       - uses: actions/checkout@v4
+      # paths-filter compares against the PR base, so it only makes sense on
+      # pull_request events. Push to main, schedule, and workflow_dispatch
+      # always run the full LLM-gated suite and skip the filter entirely.
       - id: filter
+        if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@v3
         with:
           filters: |
@@ -51,9 +55,12 @@ jobs:
               - '.github/workflows/integrity.yml'
       - id: decide
         run: |
-          if [ "${{ github.event_name }}" != "pull_request" ] || [ "${{ steps.filter.outputs.llm_paths }}" = "true" ]; then
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "run_llm=true" >> "$GITHUB_OUTPUT"
-            echo "LLM-gated tests: ENABLED (event=${{ github.event_name }}, llm_paths=${{ steps.filter.outputs.llm_paths }})"
+            echo "LLM-gated tests: ENABLED (event=${{ github.event_name }})"
+          elif [ "${{ steps.filter.outputs.llm_paths }}" = "true" ]; then
+            echo "run_llm=true" >> "$GITHUB_OUTPUT"
+            echo "LLM-gated tests: ENABLED — PR touches agent/RAG/chat/SSE paths."
           else
             echo "run_llm=false" >> "$GITHUB_OUTPUT"
             echo "LLM-gated tests: SKIPPED — no agent/RAG/chat/SSE paths touched in this PR."
