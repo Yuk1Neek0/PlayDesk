@@ -6,6 +6,8 @@ ER diagram: Store → Resource → GameMenu / Booking
             KnowledgeChunk (RAG)
 """
 
+from datetime import time
+
 from django.conf import settings
 from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import RangeOperators
@@ -39,6 +41,11 @@ class Store(models.Model):
     # don't need a migration.
     brand = models.JSONField(default=dict, blank=True)
     points_per_booking = models.PositiveIntegerField(default=10)
+    # Quiet hours are store-local (via `timezone`). The outbound sender
+    # reschedules non-urgent messages that fall inside this window to the
+    # next allowed boundary; urgent templates (booking_confirmation) bypass.
+    quiet_hours_start = models.TimeField(default=time(22, 0))
+    quiet_hours_end = models.TimeField(default=time(8, 0))
 
     class Meta:
         ordering = ["name"]
