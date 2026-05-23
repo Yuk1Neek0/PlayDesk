@@ -34,7 +34,8 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Booking, Conversation, Resource
+from core.models import Booking, Conversation, Customer, Resource
+from core.phone import normalize_phone
 
 from .serializers import (
     AvailabilityResponseSerializer,
@@ -44,6 +45,10 @@ from .serializers import (
     ConversationCreateSerializer,
     ConversationDetailSerializer,
     ConversationSerializer,
+    CustomerDetailSerializer,
+    CustomerNoteCreateSerializer,
+    CustomerNoteSerializer,
+    CustomerSummarySerializer,
     ResourceSerializer,
 )
 
@@ -389,6 +394,61 @@ class AdminBookingListView(ListAPIView):
             qs = qs.filter(start_time__gte=day_start, start_time__lt=day_end)
 
         return qs
+
+
+# ---------------------------------------------------------------------------
+# Admin customers (retention epic)
+# ---------------------------------------------------------------------------
+
+
+class AdminCustomerListView(ListAPIView):
+    """GET /api/admin/customers/?q=&page= — paginated, newest-first list.
+
+    Search is case-insensitive on name; if the query string normalises to a
+    valid E.164 phone, an exact phone match is also OR'd in. Two searches in
+    one — without the query, ordering is by ``-last_visit_at``.
+    """
+
+    serializer_class = CustomerSummarySerializer
+    pagination_class = StandardPagination
+
+    def get_queryset(self):
+        from django.db.models import Q
+
+        qs = Customer.objects.all()
+        q = self.request.query_params.get("q", "").strip()
+        if q:
+            normalized = normalize_phone(q)
+            phone_q = Q(phone=normalized) if normalized else Q()
+            qs = qs.filter(Q(name__icontains=q) | phone_q)
+        # NULLS LAST so customers without visits don't lead the list.
+        from django.db.models import F
+
+        return qs.order_by(F("last_visit_at").desc(nulls_last=True), "-created_at")
+
+
+class AdminCustomerDetailView(RetrieveAPIView):
+    """GET /api/admin/customers/{id}/ — profile + last 50 visits + all notes."""
+
+    serializer_class = CustomerDetailSerializer
+    queryset = Customer.objects.prefetch_related("notes", "notes__author").all()
+
+
+class AdminCustomerNoteCreateView(APIView):
+    """POST /api/admin/customers/{id}/notes/ — add a note attributed to the
+    authenticated staff user (or anonymous if no session)."""
+
+    def post(self, request, pk: int):
+        try:
+            customer = Customer.objects.get(pk=pk)
+        except Customer.DoesNotExist:
+            return Response({"detail": "Customer not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        ser = CustomerNoteCreateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        author = request.user if request.user.is_authenticated else None
+        note = customer.notes.create(body=ser.validated_data["body"], author=author)
+        return Response(CustomerNoteSerializer(note).data, status=status.HTTP_201_CREATED)
 
 
 # ---------------------------------------------------------------------------

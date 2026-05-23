@@ -15,6 +15,9 @@ from django.urls import path
 from .views import (
     AdminBookingListView,
     AdminConversationListView,
+    AdminCustomerDetailView,
+    AdminCustomerListView,
+    AdminCustomerNoteCreateView,
     BookingDetailView,
     BookingListCreateView,
     ConversationCreateView,
@@ -56,6 +59,21 @@ urlpatterns = [
         "admin/bookings/",
         AdminBookingListView.as_view(),
         name="admin-booking-list",
+    ),
+    path(
+        "admin/customers/",
+        AdminCustomerListView.as_view(),
+        name="admin-customer-list",
+    ),
+    path(
+        "admin/customers/<int:pk>/",
+        AdminCustomerDetailView.as_view(),
+        name="admin-customer-detail",
+    ),
+    path(
+        "admin/customers/<int:pk>/notes/",
+        AdminCustomerNoteCreateView.as_view(),
+        name="admin-customer-note-create",
     ),
     # Stripe webhook — confirms a booking when its deposit is paid
     path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"),
