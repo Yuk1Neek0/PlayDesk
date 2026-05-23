@@ -42,6 +42,11 @@ def _reverse_backfill(apps, schema_editor) -> None:
 class Migration(migrations.Migration):
     dependencies = [
         ("core", "0009_alter_booking_status"),
+        # Cross-slice dep: this data migration imports live `Store` (which
+        # post-merge includes the outbound slice's `quiet_hours_*` columns).
+        # Without this edge, the live-model SELECT runs against a Store
+        # table missing those columns.
+        ("core", "0008_store_quiet_hours_end_store_quiet_hours_start"),
     ]
 
     operations = [

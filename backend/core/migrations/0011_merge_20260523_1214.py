@@ -4,11 +4,9 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0008_store_quiet_hours_end_store_quiet_hours_start'),
-        ('core', '0010_backfill_points'),
+        ("core", "0008_store_quiet_hours_end_store_quiet_hours_start"),
+        ("core", "0010_backfill_points"),
     ]
 
-    operations = [
-    ]
+    operations = []
