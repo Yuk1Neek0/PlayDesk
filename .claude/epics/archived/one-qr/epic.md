@@ -1,9 +1,9 @@
 ---
 name: one-qr
-status: backlog
+status: completed
 created: 2026-05-23T04:27:55Z
-updated: 2026-05-23T04:34:14Z
-progress: 0%
+updated: 2026-05-23T14:10:41Z
+progress: 100%
 prd: .claude/prds/one-qr.md
 github: https://github.com/Yuk1Neek0/PlayDesk/issues/84
 ---
