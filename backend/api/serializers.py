@@ -115,6 +115,29 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"end_time": "end_time must be after start_time."})
         return attrs
 
+    def create(self, validated_data):
+        """Resolve a Customer for this booking before saving.
+
+        Phone is normalised to E.164; bookings with unparseable phones are
+        rejected with a 400. The resolved customer's canonical phone is
+        also written back to the legacy `customer_phone` column so the two
+        stay in sync until the legacy column is removed.
+        """
+        from core.customers import UnparseablePhoneError, resolve_customer
+
+        resource = validated_data["resource"]
+        try:
+            customer = resolve_customer(
+                store=resource.store,
+                raw_phone=validated_data["customer_phone"],
+                name=validated_data.get("customer_name", ""),
+            )
+        except UnparseablePhoneError as exc:
+            raise serializers.ValidationError({"customer_phone": str(exc)})
+        validated_data["customer"] = customer
+        validated_data["customer_phone"] = customer.phone
+        return super().create(validated_data)
+
 
 class BookingPatchSerializer(serializers.ModelSerializer):
     """Deserializes PATCH /api/bookings/{id}/ request body (all fields optional)."""
