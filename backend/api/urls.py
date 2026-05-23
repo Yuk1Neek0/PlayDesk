@@ -36,6 +36,7 @@ from .views import (
 from .views_memberships import (
     AdjustPointsView,
     MembershipView,
+    QRTierBadgeView,
     RedeemView,
     RewardTierViewSet,
     RewardViewSet,
@@ -127,6 +128,7 @@ urlpatterns = [
         name="admin-qr-analytics",
     ),
     path("qr/event/", QREventCreateView.as_view(), name="qr-event"),
+    path("qr/tier/", QRTierBadgeView.as_view(), name="qr-tier-badge"),
     path("qr/<slug:slug>/", QRPublicView.as_view(), name="qr-public"),
     # Stripe webhook — confirms a booking when its deposit is paid
     path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"),

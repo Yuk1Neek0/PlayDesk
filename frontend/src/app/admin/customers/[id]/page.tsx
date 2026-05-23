@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import MembershipSection from "@/components/admin/membership-section";
 import { fmtDate, fmtTime, relTime } from "@/components/pd-ui";
 import {
   adminAddCustomerNote,
@@ -201,6 +202,9 @@ export default function CustomerDetailPage() {
           </div>
         </section>
       </div>
+
+      {/* Membership card — points balance, tier, ledger, adjust + redeem */}
+      <MembershipSection customerId={c.id} />
     </div>
   );
 }

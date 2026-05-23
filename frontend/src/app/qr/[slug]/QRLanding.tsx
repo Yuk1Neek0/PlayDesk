@@ -15,6 +15,8 @@ import { useEffect, useRef } from "react";
 import { Icon } from "@/components/pd-ui";
 import type { QRAction, QRPublicPayload } from "@/lib/api";
 
+import type { TierBadge } from "./page";
+
 const KIND_LABELS_ZH: Record<string, string> = {
   review: "去 Google 评价",
   instagram: "关注 Instagram",
@@ -57,7 +59,13 @@ function trackEvent(body: { slug: string; kind: "scan" | "click"; action_id?: nu
   navigator.sendBeacon("/api/qr/event/", blob);
 }
 
-export default function QRLanding({ payload }: { payload: QRPublicPayload }) {
+export default function QRLanding({
+  payload,
+  tier,
+}: {
+  payload: QRPublicPayload;
+  tier?: TierBadge | null;
+}) {
   const { store, actions } = payload;
   const scanFiredRef = useRef(false);
   const lang = typeof window !== "undefined" ? detectLang() : "en";
@@ -99,6 +107,16 @@ export default function QRLanding({ payload }: { payload: QRPublicPayload }) {
           <div className="pd-qr-store-sub">
             {lang === "zh" ? "感谢您的到访 · 请选择一个" : "Thanks for visiting · pick one"}
           </div>
+          {tier && (
+            <div
+              className="pd-chip pd-chip--ghost"
+              style={{ marginTop: 10, display: "inline-flex", gap: 6 }}
+              title={tier.perks_text || undefined}
+            >
+              <span aria-hidden>★</span>
+              <span>{tier.name}</span>
+            </div>
+          )}
         </div>
 
         <div className="pd-qr-actions">

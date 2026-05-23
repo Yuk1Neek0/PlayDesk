@@ -263,3 +263,41 @@ class RewardTierViewSet(viewsets.ModelViewSet):
         if store_id:
             qs = qs.filter(store_id=store_id)
         return qs
+
+
+# ---------------------------------------------------------------------------
+# Public tier badge (for the SSR'd /qr/[slug] page)
+# ---------------------------------------------------------------------------
+
+
+class QRTierBadgeView(APIView):
+    """GET /api/qr/tier/?customer_id=N&store=M — badge-only public payload.
+
+    Read by the SSR'd public QR landing page after it resolves the
+    ``pd_customer`` cookie. Returns the tier name + perks only, never the
+    full ledger — anonymous-friendly, safe to expose without auth.
+    Anonymous / mismatched / not-found returns ``{tier: null}`` rather
+    than a 4xx so the SSR call can keep rendering the page.
+    """
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request):
+        raw_cid = request.query_params.get("customer_id")
+        raw_store = request.query_params.get("store")
+        if not raw_cid or not raw_store:
+            return Response({"tier": None})
+        try:
+            cid = int(raw_cid)
+            sid = int(raw_store)
+        except (TypeError, ValueError):
+            return Response({"tier": None})
+        try:
+            customer = Customer.objects.get(pk=cid, store_id=sid)
+        except Customer.DoesNotExist:
+            return Response({"tier": None})
+        tier = tier_for(customer)
+        if tier is None:
+            return Response({"tier": None})
+        return Response({"tier": {"id": tier.id, "name": tier.name, "perks_text": tier.perks_text}})

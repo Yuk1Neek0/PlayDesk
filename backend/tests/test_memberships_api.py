@@ -380,3 +380,47 @@ def test_tiers_list_filters_by_store(store, other_store, admin_client):
     items = body["results"] if isinstance(body, dict) and "results" in body else body
     names = {r["name"] for r in items}
     assert names == {"Bronze"}
+
+
+# ---------------------------------------------------------------------------
+# Public tier badge — /api/qr/tier/?customer_id=&store=
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_qr_tier_badge_anonymous_returns_null(client):
+    resp = client.get("/api/qr/tier/")
+    assert resp.status_code == 200
+    assert resp.json() == {"tier": None}
+
+
+@pytest.mark.django_db
+def test_qr_tier_badge_unknown_customer_returns_null(client, store):
+    resp = client.get(f"/api/qr/tier/?customer_id=99999&store={store.id}")
+    assert resp.status_code == 200
+    assert resp.json() == {"tier": None}
+
+
+@pytest.mark.django_db
+def test_qr_tier_badge_returns_tier_when_resolvable(client, customer, tiers):
+    bronze, _silver, _gold = tiers
+    resp = client.get(f"/api/qr/tier/?customer_id={customer.id}&store={customer.store_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["tier"]["id"] == bronze.id
+    assert body["tier"]["name"] == "Bronze"
+
+
+@pytest.mark.django_db
+def test_qr_tier_badge_cross_store_returns_null(client, customer, other_store):
+    # Customer is in `store`; asking for them with the other store returns null.
+    resp = client.get(f"/api/qr/tier/?customer_id={customer.id}&store={other_store.id}")
+    assert resp.status_code == 200
+    assert resp.json() == {"tier": None}
+
+
+@pytest.mark.django_db
+def test_qr_tier_badge_no_tiers_returns_null(client, customer):
+    resp = client.get(f"/api/qr/tier/?customer_id={customer.id}&store={customer.store_id}")
+    assert resp.status_code == 200
+    assert resp.json() == {"tier": None}
