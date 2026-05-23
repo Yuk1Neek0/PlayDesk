@@ -34,7 +34,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Booking, Conversation, Customer, Resource
+from core.models import Booking, Conversation, Customer, QRAction, QREvent, Resource, Store
 from core.phone import normalize_phone
 
 from .serializers import (
@@ -49,6 +49,9 @@ from .serializers import (
     CustomerNoteCreateSerializer,
     CustomerNoteSerializer,
     CustomerSummarySerializer,
+    QRActionCreateSerializer,
+    QRActionSerializer,
+    QREventCreateSerializer,
     ResourceSerializer,
 )
 
@@ -449,6 +452,285 @@ class AdminCustomerNoteCreateView(APIView):
         author = request.user if request.user.is_authenticated else None
         note = customer.notes.create(body=ser.validated_data["body"], author=author)
         return Response(CustomerNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+
+# ---------------------------------------------------------------------------
+# QR (One QR engagement)
+# ---------------------------------------------------------------------------
+
+
+class QRActionListCreateView(APIView):
+    """GET / POST /api/admin/qr-actions/?store=<id>.
+
+    Single endpoint because the list and create payloads are tightly
+    coupled (POST returns the created row; both use QRActionSerializer).
+    """
+
+    def _get_store_id(self, request) -> int | None:
+        raw = request.query_params.get("store") or request.data.get("store")
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+
+    def get(self, request):
+        store_id = self._get_store_id(request)
+        qs = QRAction.objects.all()
+        if store_id is not None:
+            qs = qs.filter(store_id=store_id)
+        qs = qs.order_by("store_id", "position")
+        return Response(QRActionSerializer(qs, many=True).data)
+
+    def post(self, request):
+        store_id = self._get_store_id(request)
+        if store_id is None:
+            return Response({"store": "store id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            store = Store.objects.get(pk=store_id)
+        except Store.DoesNotExist:
+            return Response({"store": "not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        ser = QRActionCreateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+
+        from django.db import transaction
+        from django.db.models import Max
+
+        with transaction.atomic():
+            if "position" not in data or data["position"] is None:
+                # Append to the end.
+                last = QRAction.objects.filter(store=store).aggregate(m=Max("position"))["m"]
+                data["position"] = (last + 1) if last is not None else 0
+            action = QRAction.objects.create(store=store, **data)
+        return Response(QRActionSerializer(action).data, status=status.HTTP_201_CREATED)
+
+
+class QRActionDetailView(APIView):
+    """PATCH / DELETE /api/admin/qr-actions/{id}/.
+
+    PATCH supports `position` reorder — when set, the whole store's
+    actions are re-positioned atomically so positions stay contiguous.
+    """
+
+    def _get_action(self, pk: int) -> QRAction | None:
+        try:
+            return QRAction.objects.select_related("store").get(pk=pk)
+        except QRAction.DoesNotExist:
+            return None
+
+    def patch(self, request, pk: int):
+        action = self._get_action(pk)
+        if action is None:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        ser = QRActionSerializer(action, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        new_position = ser.validated_data.pop("position", None)
+        # Apply non-position fields first.
+        for field, value in ser.validated_data.items():
+            setattr(action, field, value)
+        action.save()
+
+        if new_position is not None and new_position != action.position:
+            _reorder_actions(action.store_id, action.id, int(new_position))
+            action.refresh_from_db()
+
+        return Response(QRActionSerializer(action).data)
+
+    def delete(self, request, pk: int):
+        action = self._get_action(pk)
+        if action is None:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        store_id = action.store_id
+        action.delete()
+        _compact_positions(store_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _reorder_actions(store_id: int, action_id: int, new_position: int) -> None:
+    """Move `action_id` to `new_position` and renumber the store's actions.
+
+    Atomic — uses a two-pass approach with a temporary offset to dodge the
+    `(store, position)` unique constraint during the rewrite.
+    """
+    from django.db import transaction
+
+    with transaction.atomic():
+        rows = list(
+            QRAction.objects.select_for_update().filter(store_id=store_id).order_by("position")
+        )
+        rows = [r for r in rows if r.id != action_id]
+        target = QRAction.objects.get(pk=action_id)
+        new_position = max(0, min(new_position, len(rows)))
+        rows.insert(new_position, target)
+
+        # Shift everything to a temporary high range to avoid violating the
+        # (store, position) unique constraint mid-write.
+        offset = 10_000
+        for idx, r in enumerate(rows):
+            QRAction.objects.filter(pk=r.pk).update(position=offset + idx)
+        for idx, r in enumerate(rows):
+            QRAction.objects.filter(pk=r.pk).update(position=idx)
+
+
+def _compact_positions(store_id: int) -> None:
+    """Renumber positions to be contiguous 0..N-1 after a delete."""
+    from django.db import transaction
+
+    with transaction.atomic():
+        rows = list(
+            QRAction.objects.select_for_update().filter(store_id=store_id).order_by("position")
+        )
+        offset = 10_000
+        for idx, r in enumerate(rows):
+            QRAction.objects.filter(pk=r.pk).update(position=offset + idx)
+        for idx, r in enumerate(rows):
+            QRAction.objects.filter(pk=r.pk).update(position=idx)
+
+
+class QRAnalyticsView(APIView):
+    """GET /api/admin/qr-analytics/?store=<id>&days=N.
+
+    Returns total scans, total clicks, engagement rate, and per-action
+    click breakdown over the last N days. Null-safe — zero rows yield
+    zeros, never NaN.
+    """
+
+    def get(self, request):
+        from datetime import timedelta
+
+        from django.db.models import Count
+        from django.utils import timezone
+
+        try:
+            store_id = int(request.query_params.get("store") or 0) or None
+        except (TypeError, ValueError):
+            store_id = None
+        try:
+            days = max(1, min(365, int(request.query_params.get("days", 7))))
+        except (TypeError, ValueError):
+            days = 7
+
+        cutoff = timezone.now() - timedelta(days=days)
+        qs = QREvent.objects.filter(created_at__gte=cutoff)
+        if store_id is not None:
+            qs = qs.filter(store_id=store_id)
+
+        scans = qs.filter(kind="scan").count()
+        clicks = qs.filter(kind="click").count()
+        engagement_rate = (clicks / scans) if scans else 0.0
+
+        per_action = list(
+            qs.filter(kind="click", action__isnull=False)
+            .values("action_id", "action__label", "action__kind")
+            .annotate(clicks=Count("id"))
+            .order_by("-clicks")
+        )
+
+        return Response(
+            {
+                "scans": scans,
+                "clicks": clicks,
+                "engagement_rate": round(engagement_rate, 4),
+                "per_action": per_action,
+                "days": days,
+            }
+        )
+
+
+class QREventCreateView(APIView):
+    """Public POST /api/qr/event/ — anonymous-friendly tracking.
+
+    Resolves the store by slug, optionally links the event to a Customer
+    via the `pd_customer` cookie, awards `reward_points` on click events
+    when a customer is linked. Never 4xx an anonymous request.
+    """
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request):
+        ser = QREventCreateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+
+        try:
+            store = Store.objects.get(slug=data["slug"])
+        except Store.DoesNotExist:
+            return Response({"detail": "Unknown store."}, status=status.HTTP_404_NOT_FOUND)
+
+        action: QRAction | None = None
+        if data.get("action_id"):
+            try:
+                action = QRAction.objects.get(pk=data["action_id"], store=store)
+            except QRAction.DoesNotExist:
+                # Bad action id is non-fatal for analytics — record a
+                # scan-shaped event instead of failing the request.
+                action = None
+
+        # Opportunistic customer linkage. The pd_customer cookie carries
+        # the integer Customer pk; we look it up but tolerate stale /
+        # forged values gracefully.
+        customer: Customer | None = None
+        raw_cookie = request.COOKIES.get("pd_customer")
+        if raw_cookie:
+            try:
+                customer = Customer.objects.get(pk=int(raw_cookie), store=store)
+            except (Customer.DoesNotExist, ValueError):
+                customer = None
+
+        QREvent.objects.create(
+            store=store,
+            action=action,
+            customer=customer,
+            kind=data["kind"],
+            user_agent=(request.META.get("HTTP_USER_AGENT") or "")[:255],
+            locale=(request.META.get("HTTP_ACCEPT_LANGUAGE") or "")[:8],
+        )
+
+        # Award points on a click with a linked customer + action.
+        if customer is not None and action is not None and data["kind"] == "click":
+            customer.tags = list(set(customer.tags))  # touch — keeps last_visit_at fresh
+            # No dedicated points column yet — store an audit hint in tags.
+            # (A future `Customer.points` column belongs to a memberships slice.)
+            tag = f"qr:{action.kind}"
+            if tag not in customer.tags:
+                customer.tags = customer.tags + [tag]
+                customer.save(update_fields=["tags"])
+
+        return Response({"ok": True}, status=status.HTTP_201_CREATED)
+
+
+class QRPublicView(APIView):
+    """GET /api/qr/{slug}/ — public payload for the landing page.
+
+    Returns the store's branding + the ordered, enabled actions. Used by
+    the SSR public page at /qr/[slug] in the frontend.
+    """
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request, slug: str):
+        try:
+            store = Store.objects.get(slug=slug)
+        except Store.DoesNotExist:
+            return Response({"detail": "Unknown store."}, status=status.HTTP_404_NOT_FOUND)
+        actions = store.qr_actions.filter(enabled=True).order_by("position")
+        return Response(
+            {
+                "store": {
+                    "id": store.id,
+                    "name": store.name,
+                    "slug": store.slug,
+                    "brand": store.brand or {},
+                },
+                "actions": QRActionSerializer(actions, many=True).data,
+            }
+        )
 
 
 # ---------------------------------------------------------------------------

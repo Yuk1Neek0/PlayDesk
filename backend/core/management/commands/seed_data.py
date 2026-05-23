@@ -7,7 +7,7 @@ Safe to run multiple times — uses get_or_create / update_or_create.
 
 from django.core.management.base import BaseCommand
 
-from core.models import GameMenu, Resource, Store
+from core.models import GameMenu, QRAction, Resource, Store
 
 STORE_DATA = {
     "name": "PlayDesk Flagship",
@@ -60,6 +60,39 @@ RESOURCE_DATA = [
         "metadata": {},
     },
 ]
+
+QR_ACTION_DATA = [
+    # Highest-value action (review) leads, then social follows, then WiFi.
+    {
+        "kind": "review",
+        "label": "Leave a Google review",
+        "target_url": "https://example.com/google-review-placeholder",
+        "position": 0,
+        "reward_points": 10,
+    },
+    {
+        "kind": "instagram",
+        "label": "Follow on Instagram",
+        "target_url": "https://example.com/instagram-placeholder",
+        "position": 1,
+        "reward_points": 5,
+    },
+    {
+        "kind": "wechat",
+        "label": "加微信 (Add on WeChat)",
+        "target_url": "https://example.com/wechat-placeholder",
+        "position": 2,
+        "reward_points": 5,
+    },
+    {
+        "kind": "wifi",
+        "label": "Connect to store WiFi",
+        "target_url": "https://example.com/wifi-placeholder",
+        "position": 3,
+        "reward_points": 1,
+    },
+]
+
 
 GAME_MENU_DATA = {
     "PS5 Station 1": [
@@ -119,5 +152,24 @@ class Command(BaseCommand):
                 self.stdout.write(
                     f"    Game: {'created' if g_created else 'updated'} — {game.name}"
                 )
+
+        # QR actions — idempotent on (store, kind), so re-running the seed
+        # never duplicates the chip set. Position is taken from the seed
+        # data to keep the configured order stable.
+        for qr in QR_ACTION_DATA:
+            action, qr_created = QRAction.objects.update_or_create(
+                store=store,
+                kind=qr["kind"],
+                defaults={
+                    "label": qr["label"],
+                    "target_url": qr["target_url"],
+                    "position": qr["position"],
+                    "reward_points": qr["reward_points"],
+                    "enabled": True,
+                },
+            )
+            self.stdout.write(
+                f"  QR action: {'created' if qr_created else 'updated'} — {action.label}"
+            )
 
         self.stdout.write(self.style.SUCCESS("Seed complete."))
