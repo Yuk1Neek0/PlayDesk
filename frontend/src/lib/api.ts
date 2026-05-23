@@ -347,3 +347,190 @@ export function adminDeleteQRAction(id: number): Promise<void> {
 export function adminGetQRAnalytics(store: number, days = 7): Promise<QRAnalytics> {
   return request(`/api/admin/qr-analytics${queryString({ store, days })}`);
 }
+
+// ── Campaigns ─────────────────────────────────────────────────────────────
+
+export interface SegmentFilter {
+  tags_include?: string[];
+  min_total_visits?: number;
+  last_visit_within_days?: number;
+  locale_pref?: "en" | "zh";
+}
+
+export interface Segment {
+  id: number;
+  store_id: number;
+  name: string;
+  filter: SegmentFilter;
+  created_by_username: string | null;
+  created_at: string;
+}
+
+export interface PaginatedSegments {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: Segment[];
+}
+
+export interface SegmentPreviewCustomer {
+  id: number;
+  name: string;
+  phone: string;
+  tags: string[];
+  total_visits: number;
+  last_visit_at: string | null;
+}
+
+export interface SegmentPreview {
+  count: number;
+  sample: SegmentPreviewCustomer[];
+}
+
+export type CampaignStatus =
+  | "draft"
+  | "scheduled"
+  | "sending"
+  | "sent"
+  | "cancelled";
+
+export interface Campaign {
+  id: number;
+  store_id: number;
+  name: string;
+  segment_id: number;
+  segment_name: string;
+  body_template: string;
+  scheduled_for: string;
+  status: CampaignStatus;
+  sent_at: string | null;
+  recipient_snapshot_count: number;
+  created_by_username: string | null;
+  sent_by_username: string | null;
+  created_at: string;
+}
+
+export interface PaginatedCampaigns {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: Campaign[];
+}
+
+export type CampaignRunStatus = "queued" | "sent" | "failed" | "skipped_optout";
+
+export interface CampaignRun {
+  id: number;
+  customer: number;
+  customer_name: string;
+  customer_phone: string;
+  status: CampaignRunStatus;
+  outbound_message_id: string;
+  failure_reason: string;
+  created_at: string;
+  sent_at: string | null;
+}
+
+export interface PaginatedCampaignRuns {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: CampaignRun[];
+}
+
+export interface CampaignSendSummary {
+  sent: number;
+  failed: number;
+  skipped: number;
+  snapshot_count: number;
+}
+
+// Segments
+export function adminListSegments(params?: {
+  store?: number;
+  page?: number;
+}): Promise<PaginatedSegments> {
+  return request(`/api/admin/segments${queryString(params)}`);
+}
+
+export function adminCreateSegment(body: {
+  store_id: number;
+  name: string;
+  filter: SegmentFilter;
+}): Promise<Segment> {
+  return request(`/api/admin/segments`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminUpdateSegment(
+  id: number,
+  body: Partial<{ name: string; filter: SegmentFilter }>,
+): Promise<Segment> {
+  return request(`/api/admin/segments/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminDeleteSegment(id: number): Promise<void> {
+  return request(`/api/admin/segments/${id}`, { method: "DELETE" });
+}
+
+export function adminPreviewSegment(id: number, limit = 20): Promise<SegmentPreview> {
+  return request(`/api/admin/segments/${id}/preview${queryString({ limit })}`);
+}
+
+// Campaigns
+export function adminListCampaigns(params?: {
+  store?: number;
+  page?: number;
+}): Promise<PaginatedCampaigns> {
+  return request(`/api/admin/campaigns${queryString(params)}`);
+}
+
+export function adminGetCampaign(id: number): Promise<Campaign> {
+  return request(`/api/admin/campaigns/${id}`);
+}
+
+export function adminCreateCampaign(body: {
+  store_id: number;
+  segment_id: number;
+  name: string;
+  body_template: string;
+  scheduled_for?: string;
+}): Promise<Campaign> {
+  return request(`/api/admin/campaigns`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminUpdateCampaign(
+  id: number,
+  body: Partial<{ name: string; body_template: string; scheduled_for: string }>,
+): Promise<Campaign> {
+  return request(`/api/admin/campaigns/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminSendCampaign(id: number): Promise<CampaignSendSummary> {
+  return request(`/api/admin/campaigns/${id}/send`, {
+    method: "POST",
+    body: JSON.stringify({ confirm: true }),
+  });
+}
+
+export function adminCancelCampaign(id: number): Promise<Campaign> {
+  return request(`/api/admin/campaigns/${id}/cancel`, { method: "POST" });
+}
+
+export function adminListCampaignRuns(
+  id: number,
+  params?: { status?: CampaignRunStatus; page?: number; page_size?: number },
+): Promise<PaginatedCampaignRuns> {
+  return request(`/api/admin/campaigns/${id}/runs${queryString(params)}`);
+}
