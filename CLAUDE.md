@@ -6,7 +6,7 @@
 
 **PlayDesk** — an AI-powered booking and front-desk platform for game lounges (PS5 / Switch / board games / private rooms). Stack: Django + DRF, Next.js, Postgres + pgvector, a hand-rolled agent loop, and RAG.
 
-See `cosready_demo_dev_plan.md` for the full product/dev plan.
+Product and delivery plan live in `.claude/prds/` (foundation, backend-core, frontend, enhancements, verification) and their archived epics under `.claude/epics/archived/`.
 
 ## Repository Layout
 

@@ -3,3 +3,4 @@ ruff==0.15.14
 pytest==8.3.4
 pytest-django==4.9.0
 pytest-cov==6.0.0
+hypothesis==6.152.9
