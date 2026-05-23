@@ -19,10 +19,17 @@ from pydantic import BaseModel, Field
 
 
 class TimeSlot(BaseModel):
-    """A single available (or suggested) time window."""
+    """A single available (or suggested) time window.
+
+    resource_id / resource_name identify which resource the window belongs to.
+    They are optional so callers that don't tie a slot to a specific resource
+    (e.g. a "nearby alternative" suggestion) can still emit a bare window.
+    """
 
     start: datetime
     end: datetime
+    resource_id: int | None = None
+    resource_name: str | None = None
 
 
 class BookingConflictError(BaseModel):

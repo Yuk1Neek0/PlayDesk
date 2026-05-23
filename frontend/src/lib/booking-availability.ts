@@ -62,6 +62,22 @@ export function toSlotData(resp: AvailabilityResponse): SlotData {
   };
 }
 
+// A Date whose Y/M/D matches today's date in STORE_TIMEZONE. Constructed via
+// the local-time Date constructor so isoDate() (which reads local Y/M/D) and
+// strip arithmetic via setDate() stay correct regardless of browser TZ.
+export function storeToday(): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: STORE_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const y = Number(parts.find((p) => p.type === "year")!.value);
+  const m = Number(parts.find((p) => p.type === "month")!.value);
+  const d = Number(parts.find((p) => p.type === "day")!.value);
+  return new Date(y, m - 1, d);
+}
+
 // An ISO timestamp at a store-local hour; hour 24 rolls into the next day.
 export function isoAt(date: Date, hour: number): string {
   const day = hour >= 24 ? new Date(date.getTime() + 86_400_000) : date;
