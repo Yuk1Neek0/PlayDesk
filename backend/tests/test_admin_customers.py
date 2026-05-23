@@ -40,19 +40,34 @@ def seeded_with_visits(seeded, resource):
     alice, bob, _cleo = seeded
     base = datetime(2026, 11, 1, 18, tzinfo=UTC)
     Booking.objects.create(
-        resource=resource, customer=alice, customer_name="Alice", customer_phone=alice.phone,
-        start_time=base, end_time=base + timedelta(hours=1),
-        status=BookingStatus.CONFIRMED, source=BookingSource.MANUAL,
+        resource=resource,
+        customer=alice,
+        customer_name="Alice",
+        customer_phone=alice.phone,
+        start_time=base,
+        end_time=base + timedelta(hours=1),
+        status=BookingStatus.CONFIRMED,
+        source=BookingSource.MANUAL,
     )
     Booking.objects.create(
-        resource=resource, customer=alice, customer_name="Alice", customer_phone=alice.phone,
-        start_time=base + timedelta(days=1), end_time=base + timedelta(days=1, hours=1),
-        status=BookingStatus.CONFIRMED, source=BookingSource.AGENT,
+        resource=resource,
+        customer=alice,
+        customer_name="Alice",
+        customer_phone=alice.phone,
+        start_time=base + timedelta(days=1),
+        end_time=base + timedelta(days=1, hours=1),
+        status=BookingStatus.CONFIRMED,
+        source=BookingSource.AGENT,
     )
     Booking.objects.create(
-        resource=resource, customer=bob, customer_name="Bob", customer_phone=bob.phone,
-        start_time=base + timedelta(days=2), end_time=base + timedelta(days=2, hours=1),
-        status=BookingStatus.CONFIRMED, source=BookingSource.MANUAL,
+        resource=resource,
+        customer=bob,
+        customer_name="Bob",
+        customer_phone=bob.phone,
+        start_time=base + timedelta(days=2),
+        end_time=base + timedelta(days=2, hours=1),
+        status=BookingStatus.CONFIRMED,
+        source=BookingSource.MANUAL,
     )
     return seeded
 
