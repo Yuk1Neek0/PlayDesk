@@ -516,8 +516,12 @@ function SlotsGrid({
   if (availability.loading) {
     return (
       <div className="pd-slots-grid">
-        {HOURS.map((h) => (
-          <div key={h} className="pd-slot pd-slot--skel" />
+        {HOURS.map((h, i) => (
+          <div
+            key={h}
+            className="pd-slot pd-slot--skel"
+            style={{ "--i": i } as React.CSSProperties}
+          />
         ))}
       </div>
     );
@@ -568,13 +572,14 @@ function SlotsGrid({
   return (
     <div className="pd-slots">
       <div className="pd-slots-grid">
-        {HOURS.map((h) => {
+        {HOURS.map((h, i) => {
           const canPick = usableFree.includes(h);
           const isTaken = taken.includes(h);
           return (
             <button
               key={h}
               className={`pd-slot ${slot === h ? "is-selected" : ""} ${!canPick ? "is-disabled" : ""} ${isTaken ? "is-taken" : ""}`}
+              style={{ "--i": i } as React.CSSProperties}
               disabled={!canPick}
               onClick={() => onPick(h)}
             >

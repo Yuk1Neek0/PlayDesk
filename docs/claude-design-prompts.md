@@ -129,3 +129,89 @@ When a page looks right in Claude Design, use **"Handoff to Claude Code"** or
 That export is the prerequisite for tasks #20–#22 — once it lands, the page
 markup/components get wired to the generated API client and SSE hook from
 [#19](https://github.com/Yuk1Neek0/PlayDesk/issues/19).
+
+---
+
+## 5. Polish pass — typography + motion
+
+Iterate on the shipped UI, not redesign it. Send this after the original
+handoff lands and the pages are live in `frontend/src/app/`.
+
+```
+We have PlayDesk — a dark, gaming-lounge booking UI built from your earlier
+handoff. The design system is in place; this is a polish pass, not a redesign.
+
+CURRENT FOUNDATION (keep all of it):
+- Palette: near-black surfaces (#0a0b0e / #14161c / #1d2129), single cyan
+  accent at oklch(0.78 0.16 200), text ramp #eef0f4 → #545a66.
+- Type: Space Grotesk (display), Inter (body), JetBrains Mono (mono),
+  wired through next/font in src/app/layout.tsx.
+- Motion token: --t: 200ms cubic-bezier(.2,.65,.3,1).
+- Radii: 8 / 12 / 16 / 22 px. Hairline borders at rgba(255,255,255, .06–.12).
+- Pages: / (4-step booking flow with date strip + slot grid), /chat (AI
+  front desk with streaming bubbles + "checking availability…" tool-call
+  hints), /admin (live conversations + bookings table), /login.
+
+WHAT TO IMPROVE:
+
+1. Typography rhythm
+   - Tighter type scale across the booking flow (currently feels uniform).
+     Propose a 5-step ramp from hero to micro, with deliberate weight
+     contrast — Space Grotesk for numerics and step headers, Inter
+     everywhere else. Show the rendered hero on / and the chat header
+     side by side.
+   - Better tabular numerals on prices, booking IDs, and times. The /admin
+     bookings table and the booking confirmation card both have ¥ amounts
+     and HH:MM ranges that should align by column.
+   - One opinionated detail font change is welcome if it sharpens the
+     gaming-lounge feel — propose it, don't ship it blind.
+
+2. Motion / micro-interactions (use --t and the existing easing token)
+   - Page-enter fade-up for the booking page hero (~12px translateY).
+   - Step-to-step scroll on / : a subtle highlight ring on the newly-active
+     step (cyan glow that pulses once, then settles).
+   - Date strip: slot cells should fade in staggered (~30ms apart) when the
+     availability response lands. Booked cells get a quiet diagonal-stripe
+     fade-in so users register them without alarm.
+   - Chat bubbles: assistant tokens type in (no cursor blinker — token
+     opacity ramp). Tool-call hint chips slide up from the composer's edge
+     and fade out when the call resolves.
+   - Confirmation view: the success stamp does one quiet scale-in (0.96 → 1)
+     with the cyan glow, then everything else settles. No celebration
+     overkill.
+   - Buttons: keep the existing color treatment, but add a 1px press-down
+     translate on :active and a soft cyan glow rise on :hover for primary.
+
+3. /admin polish
+   - Newest-first booking rows should land with a brief left-edge cyan flash
+     (3px stripe fading in over 400ms then out) when a new booking arrives
+     from a chat session — to make the live-update feel earned.
+
+CONSTRAINTS:
+- Stay on the existing CSS variables; new colors must be derivable from
+  them. Do not introduce a second accent.
+- No motion longer than 400ms on first paint; nothing blocking input.
+- Respect prefers-reduced-motion (suppress fades and slides; keep opacity
+  cross-fades only).
+- Output as a React handoff (App-Router-compatible client components) +
+  CSS additions to playdesk.css. Keep the pd-* class naming and the
+  existing component shapes from src/app/page.tsx, src/app/chat/page.tsx,
+  src/app/admin/page.tsx.
+
+DELIVERABLE:
+- Updated playdesk.css with the new motion tokens and keyframes
+- Patched JSX for the four pages with the new class hooks
+- A short "what changed and why" note per page
+```
+
+After the bundle returns:
+
+1. Drop CSS additions into `frontend/src/app/playdesk.css`, JSX patches into
+   the matching `frontend/src/app/*/page.tsx` files.
+2. Run the Playwright suite (`PLAYDESK_LLM=1 npm run e2e` from `frontend/`).
+   The calendar-today, manual-book-then-ask-AI, and admin assertions all
+   key off `.pd-*` classes — if a class name changes, fix the selector, not
+   the design.
+3. Check DevTools "rendering → paint flashing" to confirm no layout thrash.
+4. Verify `prefers-reduced-motion: reduce` in DevTools "rendering" — slides
+   and translates should suppress; opacity cross-fades stay.

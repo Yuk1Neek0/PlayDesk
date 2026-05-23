@@ -46,7 +46,7 @@ export default function ChatPage() {
   // so a fast double-send can't create two conversations.
   const busyRef = useRef(false);
 
-  const { status, text, tools, result, error, send: streamSend } = useChatStream();
+  const { status, text, tokens, tools, result, error, send: streamSend } = useChatStream();
   const streaming = status === "streaming";
 
   // Re-pin the transcript to the bottom as it grows or the stream advances.
@@ -149,6 +149,7 @@ export default function ChatPage() {
           <Bubble
             role="assistant"
             content={text}
+            tokens={streaming ? tokens : undefined}
             tools={tools}
             booking={status === "done" ? result?.booking_id ?? null : null}
             streaming={streaming}
@@ -215,12 +216,15 @@ export default function ChatPage() {
 function Bubble({
   role,
   content,
+  tokens,
   tools,
   booking,
   streaming,
 }: {
   role: "user" | "assistant";
   content: string;
+  /** Per-delta tokens from the live stream; renders each as a fade-in span. */
+  tokens?: string[];
   tools: ToolHint[];
   booking: number | null;
   streaming: boolean;
@@ -235,6 +239,7 @@ function Bubble({
       </div>
     );
   }
+  const showTokens = streaming && tokens && tokens.length > 0;
   return (
     <div className="pd-chat-row pd-chat-row--ai">
       <div className="pd-avatar pd-avatar--ai" aria-hidden>
@@ -254,10 +259,15 @@ function Bubble({
             ))}
           </div>
         )}
-        {content && (
+        {(showTokens || content) && (
           <div className="pd-bubble pd-bubble--ai">
-            {content}
-            {streaming && <span className="pd-caret" />}
+            {showTokens
+              ? tokens!.map((t, i) => (
+                  <span key={i} className="pd-tok">
+                    {t}
+                  </span>
+                ))
+              : content}
           </div>
         )}
         {booking !== null && <BookingCard id={booking} />}
