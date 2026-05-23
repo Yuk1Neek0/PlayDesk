@@ -21,7 +21,8 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-from hypothesis import HealthCheck, given, settings, strategies as st
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 _TIMEZONES = [
     "UTC",
@@ -95,8 +96,15 @@ _start_hour_strategy = st.integers(min_value=6, max_value=18)
 _duration_strategy = st.integers(min_value=1, max_value=3)
 
 
-@settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
-@given(tz_name=_tz_strategy, booking_date=_date_strategy, start_hour=_start_hour_strategy, duration_hours=_duration_strategy)
+@settings(
+    max_examples=20, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(
+    tz_name=_tz_strategy,
+    booking_date=_date_strategy,
+    start_hour=_start_hour_strategy,
+    duration_hours=_duration_strategy,
+)
 @pytest.mark.django_db(transaction=True)
 def test_check_availability_sees_booking_at_same_local_window(
     db, tz_name: str, booking_date, start_hour: int, duration_hours: int
@@ -134,8 +142,15 @@ def test_check_availability_sees_booking_at_same_local_window(
         )
 
 
-@settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
-@given(tz_name=_tz_strategy, booking_date=_date_strategy, start_hour=_start_hour_strategy, duration_hours=_duration_strategy)
+@settings(
+    max_examples=20, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(
+    tz_name=_tz_strategy,
+    booking_date=_date_strategy,
+    start_hour=_start_hour_strategy,
+    duration_hours=_duration_strategy,
+)
 @pytest.mark.django_db(transaction=True)
 def test_check_availability_is_free_strictly_after_booking(
     db, tz_name: str, booking_date, start_hour: int, duration_hours: int
@@ -175,8 +190,15 @@ def test_check_availability_is_free_strictly_after_booking(
         )
 
 
-@settings(max_examples=10, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
-@given(tz_name=_tz_strategy, booking_date=_date_strategy, start_hour=_start_hour_strategy, duration_hours=_duration_strategy)
+@settings(
+    max_examples=10, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(
+    tz_name=_tz_strategy,
+    booking_date=_date_strategy,
+    start_hour=_start_hour_strategy,
+    duration_hours=_duration_strategy,
+)
 @pytest.mark.django_db(transaction=True)
 def test_cancelled_booking_does_not_block(
     db, tz_name: str, booking_date, start_hour: int, duration_hours: int

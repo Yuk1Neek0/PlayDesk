@@ -27,6 +27,7 @@ def _local(year: int, month: int, day: int, hour: int, minute: int = 0) -> datet
     """A UTC-aware datetime representing the given store-local clock time."""
     return datetime(year, month, day, hour, minute, tzinfo=STORE_TZ).astimezone(UTC)
 
+
 # ---------------------------------------------------------------------------
 # Always use fake embeddings
 # ---------------------------------------------------------------------------
