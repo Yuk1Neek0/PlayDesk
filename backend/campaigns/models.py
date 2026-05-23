@@ -125,7 +125,10 @@ class CampaignRun(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=["campaign", "status"]),
+            models.Index(
+                fields=["campaign", "status"],
+                name="campaignrun_camp_status_idx",
+            ),
         ]
 
     def __str__(self) -> str:

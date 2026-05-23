@@ -169,9 +169,7 @@ class Migration(migrations.Migration):
             options={
                 "ordering": ["campaign", "id"],
                 "indexes": [
-                    models.Index(
-                        fields=["campaign", "status"], name="campaigns_c_campaig_2c80f5_idx"
-                    ),
+                    models.Index(fields=["campaign", "status"], name="campaignrun_camp_status_idx"),
                 ],
                 "constraints": [
                     models.UniqueConstraint(

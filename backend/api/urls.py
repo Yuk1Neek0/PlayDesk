@@ -11,6 +11,7 @@ All patterns here are relative to the "api/" prefix, so
 """
 
 from django.urls import path
+from rest_framework.routers import DefaultRouter
 
 from .views import (
     AdminBookingListView,
@@ -42,7 +43,21 @@ from .views_campaigns import (
     SegmentListCreateView,
     SegmentPreviewView,
 )
+from .views_memberships import (
+    AdjustPointsView,
+    MembershipView,
+    QRTierBadgeView,
+    RedeemView,
+    RewardTierViewSet,
+    RewardViewSet,
+)
+from .views_outbound import OutboundMessageListView
 from .webhooks_twilio import twilio_sms_webhook
+
+# DRF router for the rewards/tiers CRUD ViewSets.
+_router = DefaultRouter()
+_router.register(r"admin/rewards", RewardViewSet, basename="admin-reward")
+_router.register(r"admin/tiers", RewardTierViewSet, basename="admin-tier")
 
 app_name = "api"
 
@@ -91,6 +106,22 @@ urlpatterns = [
         AdminCustomerNoteCreateView.as_view(),
         name="admin-customer-note-create",
     ),
+    # Memberships — composite membership view + adjust-points + redeem
+    path(
+        "admin/customers/<int:pk>/membership/",
+        MembershipView.as_view(),
+        name="admin-customer-membership",
+    ),
+    path(
+        "admin/customers/<int:pk>/adjust-points/",
+        AdjustPointsView.as_view(),
+        name="admin-customer-adjust-points",
+    ),
+    path(
+        "admin/customers/<int:pk>/redeem/",
+        RedeemView.as_view(),
+        name="admin-customer-redeem",
+    ),
     # QR — One QR engagement
     path(
         "admin/qr-actions/",
@@ -108,6 +139,7 @@ urlpatterns = [
         name="admin-qr-analytics",
     ),
     path("qr/event/", QREventCreateView.as_view(), name="qr-event"),
+    path("qr/tier/", QRTierBadgeView.as_view(), name="qr-tier-badge"),
     path("qr/<slug:slug>/", QRPublicView.as_view(), name="qr-public"),
     # Campaigns — segments
     path(
@@ -151,8 +183,17 @@ urlpatterns = [
         CampaignRunsListView.as_view(),
         name="admin-campaign-runs",
     ),
+    # Outbound message log (admin)
+    path(
+        "admin/outbound/",
+        OutboundMessageListView.as_view(),
+        name="admin-outbound-list",
+    ),
     # Stripe webhook — confirms a booking when its deposit is paid
     path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"),
     # Twilio SMS webhook — wires SMS into the agent loop
     path("webhooks/twilio/sms/", twilio_sms_webhook, name="twilio-sms-webhook"),
 ]
+
+# Rewards / tiers CRUD — DefaultRouter generates list+detail routes.
+urlpatterns += _router.urls

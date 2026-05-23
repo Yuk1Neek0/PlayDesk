@@ -49,10 +49,15 @@ def test_stub_returns_ok_and_logs(caplog):
 
 
 def test_select_impl_picks_stub_when_outbound_missing(monkeypatch):
-    """When outbound.api is unimportable, _select_impl falls back to the stub."""
-    # Ensure no stale outbound module is cached.
-    monkeypatch.delitem(sys.modules, "outbound", raising=False)
-    monkeypatch.delitem(sys.modules, "outbound.api", raising=False)
+    """When outbound.api is unimportable, _select_impl falls back to the stub.
+
+    Setting sys.modules[...] = None is Python's standard sentinel that makes
+    subsequent `import` calls raise ImportError. We use it here because
+    outbound IS installed on disk in this branch (post-merge); the only way
+    to simulate its absence is to actively block the import.
+    """
+    monkeypatch.setitem(sys.modules, "outbound", None)
+    monkeypatch.setitem(sys.modules, "outbound.api", None)
     impl = _select_impl()
     assert impl is _stub_impl
 
