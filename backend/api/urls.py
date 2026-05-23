@@ -11,6 +11,7 @@ All patterns here are relative to the "api/" prefix, so
 """
 
 from django.urls import path
+from rest_framework.routers import DefaultRouter
 
 from .views import (
     AdminBookingListView,
@@ -32,7 +33,19 @@ from .views import (
     ResourceListView,
     stripe_webhook,
 )
+from .views_memberships import (
+    AdjustPointsView,
+    MembershipView,
+    RedeemView,
+    RewardTierViewSet,
+    RewardViewSet,
+)
 from .webhooks_twilio import twilio_sms_webhook
+
+# DRF router for the rewards/tiers CRUD ViewSets.
+_router = DefaultRouter()
+_router.register(r"admin/rewards", RewardViewSet, basename="admin-reward")
+_router.register(r"admin/tiers", RewardTierViewSet, basename="admin-tier")
 
 app_name = "api"
 
@@ -81,6 +94,22 @@ urlpatterns = [
         AdminCustomerNoteCreateView.as_view(),
         name="admin-customer-note-create",
     ),
+    # Memberships — composite membership view + adjust-points + redeem
+    path(
+        "admin/customers/<int:pk>/membership/",
+        MembershipView.as_view(),
+        name="admin-customer-membership",
+    ),
+    path(
+        "admin/customers/<int:pk>/adjust-points/",
+        AdjustPointsView.as_view(),
+        name="admin-customer-adjust-points",
+    ),
+    path(
+        "admin/customers/<int:pk>/redeem/",
+        RedeemView.as_view(),
+        name="admin-customer-redeem",
+    ),
     # QR — One QR engagement
     path(
         "admin/qr-actions/",
@@ -104,3 +133,6 @@ urlpatterns = [
     # Twilio SMS webhook — wires SMS into the agent loop
     path("webhooks/twilio/sms/", twilio_sms_webhook, name="twilio-sms-webhook"),
 ]
+
+# Rewards / tiers CRUD — DefaultRouter generates list+detail routes.
+urlpatterns += _router.urls
