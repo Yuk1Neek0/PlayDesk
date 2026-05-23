@@ -6,7 +6,7 @@ Mirrors the OpenAPI schema definitions in docs/contracts/openapi.yaml.
 
 from rest_framework import serializers
 
-from core.models import Booking, Conversation, Message, Resource
+from core.models import Booking, Conversation, Customer, CustomerNote, Message, Resource
 
 # ---------------------------------------------------------------------------
 # Resource
@@ -215,3 +215,83 @@ class ConversationCreateSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "customer_identifier": {"required": False, "allow_blank": True},
         }
+
+
+# ---------------------------------------------------------------------------
+# Customers (admin)
+# ---------------------------------------------------------------------------
+
+
+class CustomerSummarySerializer(serializers.ModelSerializer):
+    """List-view shape: just the columns the admin /customers table renders."""
+
+    class Meta:
+        model = Customer
+        fields = [
+            "id",
+            "phone",
+            "name",
+            "email",
+            "locale_pref",
+            "tags",
+            "total_visits",
+            "last_visit_at",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class CustomerVisitSerializer(serializers.ModelSerializer):
+    """One booking row embedded in the customer detail view."""
+
+    resource_name = serializers.CharField(source="resource.name", read_only=True)
+    resource_type = serializers.CharField(source="resource.type", read_only=True)
+
+    class Meta:
+        model = Booking
+        fields = [
+            "id",
+            "resource_name",
+            "resource_type",
+            "start_time",
+            "end_time",
+            "status",
+            "source",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class CustomerNoteSerializer(serializers.ModelSerializer):
+    """A single note, with the author's username flattened for the UI."""
+
+    author_username = serializers.CharField(source="author.username", read_only=True, default=None)
+
+    class Meta:
+        model = CustomerNote
+        fields = ["id", "body", "author_username", "created_at"]
+        read_only_fields = ["id", "author_username", "created_at"]
+
+
+class CustomerDetailSerializer(CustomerSummarySerializer):
+    """Customer detail: profile + recent visits + notes log."""
+
+    visits = serializers.SerializerMethodField()
+    notes = CustomerNoteSerializer(many=True, read_only=True)
+
+    class Meta(CustomerSummarySerializer.Meta):
+        fields = CustomerSummarySerializer.Meta.fields + ["visits", "notes"]
+
+    def get_visits(self, obj):
+        # Most recent 50 bookings, newest first. The signal-maintained
+        # counter on Customer makes the full-count query unnecessary here.
+        qs = obj.bookings.select_related("resource").order_by("-start_time")[:50]
+        return CustomerVisitSerializer(qs, many=True).data
+
+
+class CustomerNoteCreateSerializer(serializers.ModelSerializer):
+    """Deserializes POST /api/admin/customers/{id}/notes/."""
+
+    class Meta:
+        model = CustomerNote
+        fields = ["body"]

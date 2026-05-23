@@ -178,3 +178,65 @@ export function adminListBookings(params?: {
 }): Promise<PaginatedBookings> {
   return request(`/api/admin/bookings${queryString(params)}`);
 }
+
+// ── Admin: customers (retention) ──────────────────────────────────────────
+
+export interface CustomerSummary {
+  id: number;
+  phone: string;
+  name: string;
+  email: string | null;
+  locale_pref: "en" | "zh";
+  tags: string[];
+  total_visits: number;
+  last_visit_at: string | null;
+  created_at: string;
+}
+
+export interface CustomerVisit {
+  id: number;
+  resource_name: string;
+  resource_type: string;
+  start_time: string;
+  end_time: string;
+  status: BookingStatus;
+  source: BookingSource;
+  created_at: string;
+}
+
+export interface CustomerNote {
+  id: number;
+  body: string;
+  author_username: string | null;
+  created_at: string;
+}
+
+export interface CustomerDetail extends CustomerSummary {
+  visits: CustomerVisit[];
+  notes: CustomerNote[];
+}
+
+export interface PaginatedCustomers {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: CustomerSummary[];
+}
+
+export function adminListCustomers(params?: {
+  q?: string;
+  page?: number;
+}): Promise<PaginatedCustomers> {
+  return request(`/api/admin/customers${queryString(params)}`);
+}
+
+export function adminGetCustomer(id: number): Promise<CustomerDetail> {
+  return request(`/api/admin/customers/${id}`);
+}
+
+export function adminAddCustomerNote(id: number, body: string): Promise<CustomerNote> {
+  return request(`/api/admin/customers/${id}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}
