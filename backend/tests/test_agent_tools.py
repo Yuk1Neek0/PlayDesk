@@ -8,11 +8,25 @@ are intercepted by a FakeEmbeddingClient so no OpenAI API calls are made.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
 import rag.embeddings as emb_module
 from rag.embeddings import FakeEmbeddingClient
+
+# The fixture store sits in America/Toronto on purpose: a UTC test store hid
+# a real bug where check_availability built its requested window with
+# tzinfo=UTC instead of the store's zone. The mismatch is now load-bearing —
+# any tool that constructs store-local times in UTC will fail loudly here.
+STORE_TZ_NAME = "America/Toronto"
+STORE_TZ = ZoneInfo(STORE_TZ_NAME)
+
+
+def _local(year: int, month: int, day: int, hour: int, minute: int = 0) -> datetime:
+    """A UTC-aware datetime representing the given store-local clock time."""
+    return datetime(year, month, day, hour, minute, tzinfo=STORE_TZ).astimezone(UTC)
+
 
 # ---------------------------------------------------------------------------
 # Always use fake embeddings
@@ -37,7 +51,7 @@ def store(db):
 
     return Store.objects.create(
         name="Test Store",
-        timezone="UTC",
+        timezone=STORE_TZ_NAME,
         business_hours={
             "mon": {"open": "10:00", "close": "23:00"},
             "tue": {"open": "10:00", "close": "23:00"},
@@ -77,7 +91,9 @@ def game_menu(resource):
 def confirmed_booking(resource):
     from core.models import Booking, BookingSource, BookingStatus
 
-    start = datetime(2026, 6, 1, 20, 0, tzinfo=UTC)
+    # 20:00 store-local on a Monday — matches the time_range values the
+    # check_availability tests assert against.
+    start = _local(2026, 6, 1, 20, 0)
     end = start + timedelta(hours=2)
     return Booking.objects.create(
         resource=resource,
@@ -379,7 +395,7 @@ class TestCreateBooking:
 
         inp = CreateBookingInput(
             resource_id=resource.pk,
-            start_time=datetime(2026, 6, 1, 20, 0, tzinfo=UTC),
+            start_time=_local(2026, 6, 1, 20, 0),
             duration_minutes=120,
             customer_name="Charlie",
             customer_phone="333-3333",
@@ -393,10 +409,10 @@ class TestCreateBooking:
         from agent_tools.schemas import BookingConflictError, CreateBookingInput
         from agent_tools.tools import create_booking
 
-        # 21:00–23:00 overlaps with 20:00–22:00
+        # 21:00–23:00 overlaps with 20:00–22:00 (store-local)
         inp = CreateBookingInput(
             resource_id=resource.pk,
-            start_time=datetime(2026, 6, 1, 21, 0, tzinfo=UTC),
+            start_time=_local(2026, 6, 1, 21, 0),
             duration_minutes=120,
             customer_name="Dave",
             customer_phone="444-4444",
