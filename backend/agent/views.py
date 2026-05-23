@@ -21,6 +21,7 @@ from django.views.decorators.http import require_http_methods
 
 from core.models import Conversation, ConversationStatus
 
+from .channels.web_chat import WebChatAdapter
 from .llm_client import AnthropicClient
 from .loop import AgentLoop
 
@@ -178,7 +179,8 @@ def stream_message(
             status=404,
         )
 
-    # Parse body
+    # Parse body via the web-chat channel adapter so every channel goes
+    # through the same normalisation seam (cross-slice with Twilio SMS).
     try:
         body: dict[str, Any] = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
@@ -186,8 +188,8 @@ def stream_message(
             {"error": "invalid_message", "detail": "Invalid JSON body."}, status=400
         )
 
-    user_content = body.get("content", "").strip()
-    if not user_content:
+    normalised = WebChatAdapter().normalize_inbound(body)
+    if not normalised.text:
         return JsonResponse(
             {
                 "error": "invalid_message",
@@ -196,12 +198,16 @@ def stream_message(
             status=400,
         )
 
-    rag_chunks: list[str] = body.get("rag_chunks", [])
-    if not isinstance(rag_chunks, list):
-        rag_chunks = []
+    # Stamp the channel on the conversation if it hasn't been set yet
+    # (legacy rows pre-migration default to web_chat anyway, but new
+    # conversations posted via this endpoint stay explicit).
+    if conversation.channel != "web_chat":
+        Conversation.objects.filter(pk=conversation.pk, channel="web_chat").update(
+            channel="web_chat"
+        )
 
     response = StreamingHttpResponse(
-        _run_agent_stream(conversation, user_content, rag_chunks),
+        _run_agent_stream(conversation, normalised.text, normalised.rag_chunks),
         content_type="text/event-stream",
     )
     response["Cache-Control"] = "no-cache"
