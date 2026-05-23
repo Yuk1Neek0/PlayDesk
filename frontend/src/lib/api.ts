@@ -376,3 +376,160 @@ export function adminDeleteQRAction(id: number): Promise<void> {
 export function adminGetQRAnalytics(store: number, days = 7): Promise<QRAnalytics> {
   return request(`/api/admin/qr-analytics${queryString({ store, days })}`);
 }
+
+// ── Memberships ───────────────────────────────────────────────────────────
+
+export type PointSource =
+  | "booking"
+  | "qr_click"
+  | "redemption"
+  | "adjustment"
+  | "backfill";
+
+export interface PointTransaction {
+  id: number;
+  delta: number;
+  source: PointSource;
+  reference: string;
+  balance_after: number;
+  author_username: string | null;
+  created_at: string;
+}
+
+export interface RewardTierBadge {
+  id: number;
+  name: string;
+  perks_text: string;
+}
+
+export interface NextTier {
+  id: number;
+  name: string;
+  min_lifetime_points: number;
+}
+
+export interface AvailableReward {
+  id: number;
+  store: number;
+  name: string;
+  description: string;
+  cost_points: number;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface MembershipPayload {
+  customer_id: number;
+  balance: number;
+  lifetime_earned: number;
+  tier: RewardTierBadge | null;
+  next_tier: NextTier | null;
+  points_to_next_tier: number | null;
+  recent_transactions: PointTransaction[];
+  available_rewards: AvailableReward[];
+}
+
+export interface Reward {
+  id: number;
+  store: number;
+  name: string;
+  description: string;
+  cost_points: number;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface RewardTier {
+  id: number;
+  store: number;
+  name: string;
+  min_lifetime_points: number;
+  perks_text: string;
+  position: number;
+}
+
+export function adminGetMembership(customerId: number): Promise<MembershipPayload> {
+  return request(`/api/admin/customers/${customerId}/membership`);
+}
+
+export function adminAdjustPoints(
+  customerId: number,
+  body: { delta: number; reason: string },
+): Promise<{ transaction_id: number; balance: number }> {
+  return request(`/api/admin/customers/${customerId}/adjust-points`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminRedeemReward(
+  customerId: number,
+  reward_id: number,
+): Promise<{ redemption_id: number; transaction_id: number; balance: number }> {
+  return request(`/api/admin/customers/${customerId}/redeem`, {
+    method: "POST",
+    body: JSON.stringify({ reward_id }),
+  });
+}
+
+export function adminListRewards(store?: number): Promise<Reward[]> {
+  return request(`/api/admin/rewards${queryString({ store })}`);
+}
+
+export function adminCreateReward(body: {
+  store: number;
+  name: string;
+  description?: string;
+  cost_points: number;
+  enabled?: boolean;
+}): Promise<Reward> {
+  return request(`/api/admin/rewards`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminUpdateReward(
+  id: number,
+  body: Partial<Omit<Reward, "id" | "created_at">>,
+): Promise<Reward> {
+  return request(`/api/admin/rewards/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminDeleteReward(id: number): Promise<void> {
+  return request(`/api/admin/rewards/${id}`, { method: "DELETE" });
+}
+
+export function adminListTiers(store?: number): Promise<RewardTier[]> {
+  return request(`/api/admin/tiers${queryString({ store })}`);
+}
+
+export function adminCreateTier(body: {
+  store: number;
+  name: string;
+  min_lifetime_points: number;
+  perks_text?: string;
+  position: number;
+}): Promise<RewardTier> {
+  return request(`/api/admin/tiers`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminUpdateTier(
+  id: number,
+  body: Partial<Omit<RewardTier, "id">>,
+): Promise<RewardTier> {
+  return request(`/api/admin/tiers/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminDeleteTier(id: number): Promise<void> {
+  return request(`/api/admin/tiers/${id}`, { method: "DELETE" });
+}
