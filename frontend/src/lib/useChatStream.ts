@@ -27,6 +27,12 @@ export interface ChatStreamState {
   status: ChatStreamStatus;
   /** Assistant text accumulated from `token` events. */
   text: string;
+  /**
+   * Each `token` event's `delta`, preserved as a separate entry so the UI
+   * can render each as its own opacity-ramp span (no cursor blinker).
+   * Cleared at the start of every send so the new turn animates from scratch.
+   */
+  tokens: string[];
   /** `tool_name` of the running tool call, or null when none is in flight. */
   activeTool: string | null;
   /** Every tool call from this turn, in order, with its running/done status. */
@@ -40,6 +46,7 @@ export interface ChatStreamState {
 const INITIAL_STATE: ChatStreamState = {
   status: "idle",
   text: "",
+  tokens: [],
   activeTool: null,
   tools: [],
   result: null,
@@ -73,7 +80,11 @@ export function useChatStream(): ChatStream {
           if (controller.signal.aborted) return;
           switch (event.type) {
             case "token":
-              setState((s) => ({ ...s, text: s.text + event.data.delta }));
+              setState((s) => ({
+                ...s,
+                text: s.text + event.data.delta,
+                tokens: [...s.tokens, event.data.delta],
+              }));
               break;
             case "tool_call_start":
               setState((s) => ({

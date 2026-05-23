@@ -1,6 +1,7 @@
 /* PlayDesk — dark gaming-lounge UI
-   Ported from the Claude Design handoff (playdeck/project/src/playdesk.css).
-   Base near-black, charcoal cards, one neon accent, soft glows on
+   Ported from the Claude Design handoff (playdeck/project/src/playdesk.css),
+   refreshed in the polish-pass handoff with a 5-step type ramp and motion
+   tokens. Base near-black, charcoal cards, one neon accent, soft glows on
    selected/primary, crisp high-contrast type, no clichéd gamer gradients.
    The accent (cyan) and Space Grotesk display font are the values the
    designer committed to — the prototype's Tweaks switcher is intentionally
@@ -55,6 +56,21 @@
   --r-xl: 22px;
   --ease: cubic-bezier(.2,.65,.3,1);
   --t: 200ms var(--ease);
+  --t-fast: 120ms var(--ease);
+  --t-slow: 400ms var(--ease);
+
+  /* type ramp — 5 deliberate steps + numeric pair.
+     display → title → heading → body → micro. Space Grotesk for headings &
+     numerics, Inter for body, JetBrains Mono for IDs / phones / created-at. */
+  --fs-display: clamp(38px, 5.2vw, 60px);
+  --fs-title: 32px;
+  --fs-heading: 19px;
+  --fs-body: 14.5px;
+  --fs-micro: 11px;
+  --lh-display: 1.02;
+  --lh-title: 1.08;
+  --lh-heading: 1.25;
+  --lh-body: 1.5;
 
   /* density */
   --pad-card: 24px;
@@ -72,11 +88,31 @@ body {
     radial-gradient(1200px 600px at 80% -10%, oklch(0.3 0.06 240 / .12), transparent 60%),
     radial-gradient(900px 500px at -10% 20%, oklch(0.3 0.06 300 / .08), transparent 60%),
     var(--bg);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 /* Element resets (box-sizing, button/input/anchor inheritance) are already
    provided by Tailwind's preflight in globals.css, so they are not repeated
    here — the prototype's global resets would be redundant. */
+
+/* Opinionated detail: Space Grotesk stylistic sets 01/02 + character variant
+   11 on display + numeric runs. Sharper, single-storey 'a' and tighter 'g' —
+   a quiet shift that reads more "techy" without introducing a new family. */
+.pd-display, .pd-page-title, .pd-confirmed-title, .pd-admin-title,
+.pd-step-title, .pd-card-title, .pd-chat-title, .pd-rcard-name,
+.pd-stat-value, .pd-price, .pd-date-num, .pd-bcard-title {
+  font-feature-settings: "ss01", "ss02", "cv11";
+}
+
+/* Tabular numerals everywhere they line up in columns. */
+.pd-mono, .pd-tabular,
+.pd-price, .pd-stat-value,
+.pd-summary-val, .pd-bcard-grid > div, .pd-confirmed-grid > div,
+.pd-td, .pd-th, .pd-slot-time {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "cv11" 1;
+}
 
 /* —————— NAV —————— */
 .pd-nav {
@@ -126,7 +162,7 @@ body {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   padding: 12px 18px; border-radius: 12px;
   font-size: 14px; font-weight: 600;
-  transition: transform var(--t), background var(--t), border-color var(--t), color var(--t), box-shadow var(--t);
+  transition: transform var(--t-fast), background var(--t), border-color var(--t), color var(--t), box-shadow var(--t), filter var(--t);
   border: 1px solid transparent;
 }
 .pd-btn:active { transform: translateY(1px); }
@@ -134,7 +170,8 @@ body {
   background: var(--accent); color: var(--text-on-accent);
   box-shadow: var(--accent-glow);
 }
-.pd-btn--primary:hover { filter: brightness(1.05); }
+.pd-btn--primary:hover { filter: brightness(1.06); box-shadow: var(--accent-glow), 0 6px 24px -8px oklch(from var(--accent) l c h / .6); }
+.pd-btn--primary:active { transform: translateY(1px); filter: brightness(0.97); }
 .pd-btn--primary:disabled { background: var(--surface-2); color: var(--text-3); box-shadow: none; cursor: not-allowed; }
 .pd-btn--ghost { background: transparent; border-color: var(--hairline); color: var(--text); }
 .pd-btn--ghost:hover { background: var(--surface); border-color: var(--hairline-2); }
@@ -154,9 +191,9 @@ body {
 .pd-chip--suggest:hover { background: oklch(from var(--accent) l c h / .22); }
 
 /* —————— EYEBROW / TYPE —————— */
-.pd-eyebrow { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 12px; }
+.pd-eyebrow { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-3); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 12px; font-weight: 500; }
 .pd-eyebrow--accent { color: var(--accent); }
-.pd-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.pd-mono { font-family: var(--font-mono); }
 .pd-label { font-size: 12px; color: var(--text-3); letter-spacing: 0.04em; text-transform: uppercase; }
 
 /* —————— BADGES —————— */
@@ -176,9 +213,15 @@ body {
 .pd-badge--neutral { color: var(--text-2); background: var(--surface-2); border-color: var(--hairline); }
 
 /* —————— PAGE / STEP —————— */
-.pd-page-head { padding: 24px 0 28px; }
-.pd-page-title { font-family: var(--font-display); font-weight: 700; font-size: clamp(34px, 5vw, 56px); line-height: 1.04; letter-spacing: -0.02em; margin: 0; }
-.pd-page-sub { color: var(--text-2); margin: 14px 0 0; font-size: 16px; max-width: 60ch; }
+.pd-page-head { padding: 24px 0 28px; animation: pd-fade-up 420ms var(--ease) both; }
+.pd-page-title {
+  font-family: var(--font-display); font-weight: 700;
+  font-size: var(--fs-display);
+  line-height: var(--lh-display);
+  letter-spacing: -0.025em;
+  margin: 0;
+}
+.pd-page-sub { color: var(--text-2); margin: 16px 0 0; font-size: 16px; max-width: 60ch; line-height: 1.5; }
 
 .pd-step {
   position: relative;
@@ -194,6 +237,7 @@ body {
 .pd-step.is-active::before {
   content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
   box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 1px var(--accent-border);
+  animation: pd-step-pulse 900ms var(--ease) 1;
 }
 .pd-step-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
 .pd-step-num {
@@ -203,7 +247,7 @@ body {
   font-family: var(--font-mono); font-size: 13px; color: var(--text-2);
 }
 .pd-step-num.is-done { background: var(--accent); color: var(--text-on-accent); border-color: transparent; }
-.pd-step-title { margin: 0; font-family: var(--font-display); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.pd-step-title { margin: 0; font-family: var(--font-display); font-size: var(--fs-heading); font-weight: 600; letter-spacing: -0.012em; line-height: var(--lh-heading); }
 .pd-step-summary { margin-left: auto; font-size: 13px; color: var(--text-2); font-family: var(--font-mono); }
 
 /* —————— TABS —————— */
@@ -236,7 +280,7 @@ body {
 }
 .pd-rcard-body { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .pd-rcard-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.pd-rcard-name { font-family: var(--font-display); font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+.pd-rcard-name { font-family: var(--font-display); font-weight: 600; font-size: 16px; letter-spacing: -0.012em; line-height: 1.2; }
 .pd-rcard-meta { display: flex; flex-wrap: wrap; gap: 6px; }
 .pd-rcard-titles { display: flex; flex-wrap: wrap; gap: 6px; }
 .pd-rcard-foot { display: flex; align-items: baseline; justify-content: space-between; padding-top: 6px; border-top: 1px dashed var(--hairline); margin-top: 6px; }
@@ -297,12 +341,19 @@ body {
   border-radius: var(--r-sm); padding: 10px 4px;
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   transition: all var(--t);
+  animation: pd-fade-up 280ms var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
 }
 .pd-slot:hover { border-color: var(--hairline-2); }
 .pd-slot.is-selected { background: var(--accent); color: var(--text-on-accent); border-color: transparent; box-shadow: var(--accent-glow); }
 .pd-slot.is-selected .pd-slot-time { color: var(--text-on-accent); }
 .pd-slot.is-disabled, .pd-slot.is-taken { opacity: 0.42; cursor: not-allowed; }
-.pd-slot.is-taken { text-decoration: line-through; text-decoration-color: var(--text-4); }
+.pd-slot.is-taken {
+  text-decoration: line-through; text-decoration-color: var(--text-4);
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 7px);
+  background-color: var(--surface-2);
+}
 .pd-slot-time { font-family: var(--font-mono); font-size: 14px; color: var(--text); }
 .pd-slot-tag { font-family: var(--font-mono); font-size: 10px; color: var(--text-4); text-transform: uppercase; letter-spacing: 0.06em; }
 .pd-slot--skel { background: var(--surface-2); position: relative; overflow: hidden; height: 46px; }
@@ -386,8 +437,9 @@ body {
   background: var(--accent-soft); color: var(--accent);
   border: 1px solid var(--accent-border);
   margin-bottom: 22px;
+  animation: pd-stamp-in 520ms var(--ease) both;
 }
-.pd-confirmed-title { font-family: var(--font-display); font-size: 42px; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 28px; line-height: 1.05; }
+.pd-confirmed-title { font-family: var(--font-display); font-size: clamp(34px, 4.4vw, 46px); font-weight: 700; letter-spacing: -0.025em; margin: 6px 0 28px; line-height: var(--lh-title); }
 .pd-confirmed-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px 32px; padding: 22px 0; border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); margin-bottom: 24px; }
 .pd-confirmed-grid > div { display: flex; flex-direction: column; gap: 4px; }
 .pd-confirmed-key { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; }
@@ -401,7 +453,7 @@ body {
 }
 .pd-chat-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 18px; border-bottom: 1px solid var(--hairline); }
 .pd-chat-head-l { display: flex; gap: 14px; align-items: center; }
-.pd-chat-title { font-family: var(--font-display); font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.pd-chat-title { font-family: var(--font-display); font-size: var(--fs-heading); font-weight: 600; margin: 0; letter-spacing: -0.012em; line-height: var(--lh-heading); }
 .pd-chat-meta { font-size: 12px; color: var(--text-3); display: inline-flex; align-items: center; gap: 8px; margin-top: 2px; }
 .pd-link { color: var(--accent); font-size: 13px; transition: opacity var(--t); }
 .pd-link:hover { opacity: 0.8; }
@@ -443,8 +495,8 @@ body {
 }
 .pd-bubble--ai { background: var(--surface); border: 1px solid var(--hairline); color: var(--text); border-top-left-radius: 4px; }
 .pd-bubble--user { background: var(--accent); color: var(--text-on-accent); border-top-right-radius: 4px; box-shadow: var(--accent-glow); }
-.pd-caret { display: inline-block; width: 7px; height: 1.1em; vertical-align: -2px; background: currentColor; margin-left: 2px; animation: pd-blink 0.9s steps(2) infinite; }
-@keyframes pd-blink { 50% { opacity: 0; } }
+/* Caret retired in the polish pass — assistant tokens fade in via .pd-tok. */
+.pd-caret { display: none; }
 
 .pd-tools { display: flex; flex-wrap: wrap; gap: 6px; }
 .pd-tool {
@@ -523,7 +575,7 @@ body {
 /* —————— ADMIN —————— */
 .pd-admin { display: flex; flex-direction: column; gap: 22px; }
 .pd-admin-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
-.pd-admin-title { font-family: var(--font-display); font-size: 36px; font-weight: 700; letter-spacing: -0.02em; margin: 4px 0 0; }
+.pd-admin-title { font-family: var(--font-display); font-size: var(--fs-title); font-weight: 700; letter-spacing: -0.022em; line-height: var(--lh-title); margin: 4px 0 0; }
 .pd-admin-head-r { display: flex; gap: 18px; align-items: center; }
 .pd-live { font-size: 12px; color: var(--text-2); display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 999px; }
 .pd-admin-user { display: flex; gap: 10px; align-items: center; }
@@ -542,8 +594,8 @@ body {
 .pd-stat--ok::before { background: var(--ok); }
 .pd-stat--warn::before { background: var(--warn); }
 .pd-stat--info::before { background: var(--accent); box-shadow: var(--accent-glow); }
-.pd-stat-label { font-size: 12px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; }
-.pd-stat-value { font-family: var(--font-display); font-size: 36px; font-weight: 700; line-height: 1; }
+.pd-stat-label { font-size: var(--fs-micro); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 500; }
+.pd-stat-value { font-family: var(--font-display); font-size: var(--fs-title); font-weight: 700; line-height: 1; letter-spacing: -0.022em; }
 .pd-stat-delta { font-size: 11px; color: var(--ok); font-family: var(--font-mono); }
 
 .pd-card {
@@ -552,7 +604,7 @@ body {
 }
 .pd-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
 .pd-card-head--filters { align-items: flex-start; }
-.pd-card-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.pd-card-title { font-family: var(--font-display); font-size: var(--fs-heading); font-weight: 600; margin: 0; letter-spacing: -0.012em; line-height: var(--lh-heading); }
 .pd-card-sub { font-size: 12px; color: var(--text-3); font-family: var(--font-mono); }
 
 .pd-admin-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; }
@@ -618,11 +670,105 @@ body {
 }
 .pd-tr--head { border-top: 0; padding: 10px 8px; }
 .pd-tr:hover:not(.pd-tr--head) { background: var(--surface-2); }
-.pd-tr.is-new { animation: pd-row-in 0.6s var(--ease) both; background: var(--accent-soft); }
+.pd-tr.is-new {
+  animation: pd-row-in 380ms var(--ease) both;
+  position: relative;
+}
+.pd-tr.is-new::before {
+  content: "";
+  position: absolute; left: 0; top: 4px; bottom: 4px;
+  width: 3px; border-radius: 3px;
+  background: var(--accent);
+  box-shadow: var(--accent-glow);
+  animation: pd-edge-flash 1400ms var(--ease) both;
+}
 @keyframes pd-row-in {
-  0% { opacity: 0; transform: translateY(-6px); }
+  0% { opacity: 0; transform: translateY(-4px); }
   100% { opacity: 1; transform: translateY(0); }
 }
+
+/* ============================================================
+   POLISH PASS — motion tokens (all ≤400ms on first paint,
+   none blocking input). prefers-reduced-motion fallback below
+   keeps cross-fades, suppresses transforms.
+   ============================================================ */
+
+@keyframes pd-fade-up {
+  0% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes pd-fade-in {
+  from { opacity: 0; } to { opacity: 1; }
+}
+@keyframes pd-step-pulse {
+  0% { box-shadow: inset 0 0 0 1px var(--accent-border),
+                   0 0 0 1px var(--accent-border),
+                   0 0 0 0 oklch(from var(--accent) l c h / .55); }
+  60% { box-shadow: inset 0 0 0 1px var(--accent-border),
+                    0 0 0 1px var(--accent-border),
+                    0 0 0 8px oklch(from var(--accent) l c h / 0); }
+  100% { box-shadow: inset 0 0 0 1px var(--accent-border),
+                     0 0 0 1px var(--accent-border),
+                     0 0 0 0 oklch(from var(--accent) l c h / 0); }
+}
+@keyframes pd-stamp-in {
+  0% { opacity: 0; transform: scale(0.96); box-shadow: 0 0 0 0 oklch(from var(--accent) l c h / 0); }
+  60% { opacity: 1; transform: scale(1.0); box-shadow: 0 0 24px 4px oklch(from var(--accent) l c h / .35); }
+  100% { opacity: 1; transform: scale(1); box-shadow: var(--accent-glow); }
+}
+@keyframes pd-edge-flash {
+  0% { opacity: 0; transform: scaleY(0.4); }
+  20% { opacity: 1; transform: scaleY(1); }
+  100% { opacity: 0; transform: scaleY(1); }
+}
+@keyframes pd-tool-rise {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes pd-tool-out {
+  to { opacity: 0.55; }
+}
+@keyframes pd-tok-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* Page-enter for the booking hero is already attached on .pd-page-head above.
+   Chat and admin heads + admin grids get the same treatment, staggered. */
+.pd-chat-head, .pd-admin-head, .pd-stat-grid, .pd-admin-grid, .pd-admin-bookings {
+  animation: pd-fade-up 380ms var(--ease) both;
+}
+.pd-stat-grid { animation-delay: 60ms; }
+.pd-admin-grid { animation-delay: 110ms; }
+.pd-admin-bookings { animation-delay: 160ms; }
+
+/* Streamed assistant tokens — opacity ramp, no cursor blink. */
+.pd-tok {
+  display: inline;
+  animation: pd-tok-in 180ms var(--ease) both;
+}
+
+/* Tool-call chip rise + quiet "done" settle */
+.pd-tool { animation: pd-tool-rise 220ms var(--ease) both; }
+.pd-tool--done { animation: pd-tool-rise 220ms var(--ease) both, pd-tool-out 320ms var(--ease) 240ms forwards; }
+
+/* Reduced motion — kill transforms, keep cross-fades only */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.001ms !important;
+  }
+  .pd-page-head, .pd-chat-head, .pd-admin-head,
+  .pd-stat-grid, .pd-admin-grid, .pd-admin-bookings,
+  .pd-slot, .pd-tok, .pd-tool, .pd-tool--done,
+  .pd-tr.is-new, .pd-confirmed-stamp {
+    animation: pd-fade-in 200ms ease both !important;
+  }
+  .pd-tr.is-new::before, .pd-step.is-active::before { animation: none !important; }
+  .pd-bubble--user, .pd-btn:active { transform: none !important; }
+}
+
 .pd-th { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500; }
 .pd-th--right, .pd-td--right { text-align: right; }
 .pd-td-strong { color: var(--text); }
