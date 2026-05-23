@@ -42,7 +42,7 @@ def _make_booking(resource, start: datetime, duration_minutes: int = 120):
     return Booking.objects.create(
         resource=resource,
         customer_name="Test Customer",
-        customer_phone="000-0000",
+        customer_phone="+14165550100",
         start_time=start,
         end_time=end,
         status="confirmed",

@@ -300,6 +300,7 @@ def create_booking(inp: CreateBookingInput) -> CreateBookingOutput:
             )
         )
 
+    from core.customers import UnparseablePhoneError, resolve_customer
     from core.models import Booking, BookingSource, BookingStatus, Resource
 
     try:
@@ -316,10 +317,26 @@ def create_booking(inp: CreateBookingInput) -> CreateBookingOutput:
     end_time = inp.start_time + timedelta(minutes=inp.duration_minutes)
 
     try:
+        customer = resolve_customer(
+            store=resource.store,
+            raw_phone=inp.customer_phone,
+            name=inp.customer_name,
+        )
+    except UnparseablePhoneError as exc:
+        return CreateBookingOutput(
+            result=BookingConflictError(
+                message=str(exc),
+                conflicting_start=inp.start_time,
+                conflicting_end=inp.start_time,
+            )
+        )
+
+    try:
         booking = Booking.objects.create(
             resource=resource,
+            customer=customer,
             customer_name=inp.customer_name,
-            customer_phone=inp.customer_phone,
+            customer_phone=customer.phone,
             start_time=inp.start_time,
             end_time=end_time,
             status=BookingStatus.PENDING_PAYMENT,

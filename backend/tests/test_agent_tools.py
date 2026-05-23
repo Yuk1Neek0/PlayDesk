@@ -98,7 +98,7 @@ def confirmed_booking(resource):
     return Booking.objects.create(
         resource=resource,
         customer_name="Alice",
-        customer_phone="111-1111",
+        customer_phone="+14165550111",
         start_time=start,
         end_time=end,
         status=BookingStatus.CONFIRMED,
@@ -376,7 +376,7 @@ class TestCreateBooking:
             start_time=datetime(2026, 6, 2, 14, 0, tzinfo=UTC),
             duration_minutes=120,
             customer_name="Bob",
-            customer_phone="222-2222",
+            customer_phone="+14165550122",
         )
         out = create_booking(inp)
         assert isinstance(out.result, CreateBookingSuccess)
@@ -398,7 +398,7 @@ class TestCreateBooking:
             start_time=_local(2026, 6, 1, 20, 0),
             duration_minutes=120,
             customer_name="Charlie",
-            customer_phone="333-3333",
+            customer_phone="+14165550133",
         )
         out = create_booking(inp)
         assert isinstance(out.result, BookingConflictError)
@@ -415,7 +415,7 @@ class TestCreateBooking:
             start_time=_local(2026, 6, 1, 21, 0),
             duration_minutes=120,
             customer_name="Dave",
-            customer_phone="444-4444",
+            customer_phone="+14165550144",
         )
         out = create_booking(inp)
         assert isinstance(out.result, BookingConflictError)
@@ -429,7 +429,7 @@ class TestCreateBooking:
             start_time=datetime(2026, 6, 1, 10, 0, tzinfo=UTC),
             duration_minutes=60,
             customer_name="Eve",
-            customer_phone="555-5555",
+            customer_phone="+14165550155",
         )
         out = create_booking(inp)
         assert isinstance(out.result, BookingConflictError)
@@ -497,7 +497,7 @@ class TestModifyBooking:
         b1 = Booking.objects.create(
             resource=resource,
             customer_name="User1",
-            customer_phone="100",
+            customer_phone="+14165550110",
             start_time=datetime(2026, 6, 3, 10, 0, tzinfo=UTC),
             end_time=datetime(2026, 6, 3, 12, 0, tzinfo=UTC),
             status=BookingStatus.CONFIRMED,
@@ -506,7 +506,7 @@ class TestModifyBooking:
         _b2 = Booking.objects.create(
             resource=resource,
             customer_name="User2",
-            customer_phone="200",
+            customer_phone="+14165550120",
             start_time=datetime(2026, 6, 3, 14, 0, tzinfo=UTC),
             end_time=datetime(2026, 6, 3, 16, 0, tzinfo=UTC),
             status=BookingStatus.CONFIRMED,

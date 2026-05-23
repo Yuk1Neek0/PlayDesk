@@ -6,6 +6,7 @@ ER diagram: Store → Resource → GameMenu / Booking
             KnowledgeChunk (RAG)
 """
 
+from django.conf import settings
 from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import RangeOperators
 from django.db import models
@@ -79,6 +80,62 @@ class GameMenu(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# Customer + CustomerNote
+# ---------------------------------------------------------------------------
+class Customer(models.Model):
+    """A stable identity per (store, normalized phone). Backfilled from the
+    legacy customer_name / customer_phone strings on Booking. Foundational
+    for retention features (visits, rewards, notes)."""
+
+    LOCALE_CHOICES = [("en", "English"), ("zh", "中文")]
+
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="customers")
+    phone = models.CharField(max_length=32, help_text="E.164 normalized phone number.")
+    name = models.CharField(max_length=200, blank=True)
+    email = models.EmailField(blank=True, null=True)
+    locale_pref = models.CharField(max_length=2, choices=LOCALE_CHOICES, default="en")
+    tags = models.JSONField(default=list, blank=True)
+    total_visits = models.PositiveIntegerField(default=0)
+    last_visit_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-last_visit_at", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["store", "phone"], name="customer_unique_store_phone"),
+        ]
+        # NOTE: a trigram GIN index on lower(name) is a known perf follow-up
+        # for >10k customer datasets. Skipped here because Django's
+        # OpClass(Lower(...)) emits malformed SQL — revisit when we have a
+        # dataset that justifies a raw-SQL RunSQL workaround.
+
+    def __str__(self) -> str:
+        return f"{self.name or 'Customer'} <{self.phone}>"
+
+
+class CustomerNote(models.Model):
+    """Free-form staff note attached to a Customer. Attribution is best-effort
+    — anonymous notes are allowed for legacy/imported entries."""
+
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="notes")
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Note on {self.customer_id} ({self.created_at:%Y-%m-%d})"
+
+
+# ---------------------------------------------------------------------------
 # Conversation
 # ---------------------------------------------------------------------------
 class ConversationStatus(models.TextChoices):
@@ -127,6 +184,15 @@ class Booking(models.Model):
         blank=True,
         related_name="bookings",
     )
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="bookings",
+    )
+    # Legacy display strings — kept for one release while the customer FK
+    # is backfilled. New bookings must populate `customer` too.
     customer_name = models.CharField(max_length=200)
     customer_phone = models.CharField(max_length=50)
     start_time = models.DateTimeField()

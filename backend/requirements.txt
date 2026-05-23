@@ -7,3 +7,4 @@ django-environ==0.11.2
 anthropic
 openai
 stripe
+phonenumbers==9.0.18

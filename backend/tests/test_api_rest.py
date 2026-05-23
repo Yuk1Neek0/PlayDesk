@@ -169,7 +169,7 @@ class TestResourceAvailability:
         Booking.objects.create(
             resource=resource,
             customer_name="Alice",
-            customer_phone="111",
+            customer_phone="+14165550111",
             start_time=start,
             end_time=end,
             status="confirmed",
@@ -276,7 +276,7 @@ class TestBookingList:
         Booking.objects.create(
             resource=resource,
             customer_name="Test",
-            customer_phone="000",
+            customer_phone="+14165550100",
             start_time=_dt(2026, 7, 1, 10),
             end_time=_dt(2026, 7, 1, 12),
             status="confirmed",
@@ -294,7 +294,7 @@ class TestBookingList:
         Booking.objects.create(
             resource=resource,
             customer_name="DateTest",
-            customer_phone="000",
+            customer_phone="+14165550100",
             start_time=_dt(2026, 8, 15, 14),
             end_time=_dt(2026, 8, 15, 16),
             status="pending",
@@ -319,7 +319,7 @@ def booking(resource):
     return Booking.objects.create(
         resource=resource,
         customer_name="Charlie",
-        customer_phone="+1-555-0001",
+        customer_phone="+14165550001",
         start_time=_dt(2026, 6, 5, 18),
         end_time=_dt(2026, 6, 5, 20),
         status="pending",
@@ -367,7 +367,7 @@ class TestBookingDetail:
         other = Booking.objects.create(
             resource=resource,
             customer_name="Diana",
-            customer_phone="+1-555-0002",
+            customer_phone="+14165550002",
             start_time=_dt(2026, 6, 5, 14),
             end_time=_dt(2026, 6, 5, 16),
             status="confirmed",
@@ -475,7 +475,7 @@ class TestAdminBookings:
         Booking.objects.create(
             resource=resource,
             customer_name="Admin Test",
-            customer_phone="000",
+            customer_phone="+14165550100",
             start_time=_dt(2026, 9, 1, 10),
             end_time=_dt(2026, 9, 1, 12),
             status="confirmed",
@@ -494,7 +494,7 @@ class TestAdminBookings:
         b1 = Booking.objects.create(
             resource=resource,
             customer_name="First",
-            customer_phone="000",
+            customer_phone="+14165550100",
             start_time=_dt(2026, 9, 2, 10),
             end_time=_dt(2026, 9, 2, 11),
             status="pending",
@@ -503,7 +503,7 @@ class TestAdminBookings:
         b2 = Booking.objects.create(
             resource=resource,
             customer_name="Second",
-            customer_phone="001",
+            customer_phone="+14165550101",
             start_time=_dt(2026, 9, 3, 10),
             end_time=_dt(2026, 9, 3, 11),
             status="pending",
@@ -522,7 +522,7 @@ class TestAdminBookings:
         Booking.objects.create(
             resource=resource,
             customer_name="Pending",
-            customer_phone="000",
+            customer_phone="+14165550100",
             start_time=_dt(2026, 9, 4, 10),
             end_time=_dt(2026, 9, 4, 11),
             status="pending",

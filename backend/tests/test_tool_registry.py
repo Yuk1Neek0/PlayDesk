@@ -155,5 +155,5 @@ class TestInputSchemaValidation:
                 start_time=datetime(2026, 5, 22, 20, 0, tzinfo=UTC),
                 duration_minutes=15,  # below 30-minute minimum
                 customer_name="Bob",
-                customer_phone="123",
+                customer_phone="+14165550123",
             )

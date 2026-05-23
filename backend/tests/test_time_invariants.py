@@ -79,7 +79,7 @@ def _make_booking(resource, start_utc: datetime, end_utc: datetime, cancelled: b
     return Booking.objects.create(
         resource=resource,
         customer_name="Property Customer",
-        customer_phone="000-0000",
+        customer_phone="+14165550100",
         start_time=start_utc,
         end_time=end_utc,
         status=BookingStatus.CANCELLED if cancelled else BookingStatus.CONFIRMED,
