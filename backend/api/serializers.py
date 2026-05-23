@@ -6,7 +6,15 @@ Mirrors the OpenAPI schema definitions in docs/contracts/openapi.yaml.
 
 from rest_framework import serializers
 
-from core.models import Booking, Conversation, Customer, CustomerNote, Message, Resource
+from core.models import (
+    Booking,
+    Conversation,
+    Customer,
+    CustomerNote,
+    Message,
+    QRAction,
+    Resource,
+)
 
 # ---------------------------------------------------------------------------
 # Resource
@@ -295,3 +303,49 @@ class CustomerNoteCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerNote
         fields = ["body"]
+
+
+# ---------------------------------------------------------------------------
+# QR (One QR engagement)
+# ---------------------------------------------------------------------------
+
+
+class QRActionSerializer(serializers.ModelSerializer):
+    """Read/write representation of a single configurable QR chip."""
+
+    class Meta:
+        model = QRAction
+        fields = [
+            "id",
+            "kind",
+            "label",
+            "target_url",
+            "position",
+            "reward_points",
+            "enabled",
+        ]
+        read_only_fields = ["id"]
+
+
+class QRActionCreateSerializer(serializers.ModelSerializer):
+    """Create payload — `position` is optional; views.py appends to the
+    end when omitted."""
+
+    position = serializers.IntegerField(required=False, min_value=0)
+
+    class Meta:
+        model = QRAction
+        fields = ["kind", "label", "target_url", "position", "reward_points", "enabled"]
+
+
+class QREventCreateSerializer(serializers.Serializer):
+    """Public POST /api/qr/event/ — anonymous-friendly tracking input."""
+
+    slug = serializers.SlugField(required=True)
+    action_id = serializers.IntegerField(required=False, allow_null=True)
+    kind = serializers.ChoiceField(choices=["scan", "click"])
+
+    def validate(self, attrs):
+        if attrs["kind"] == "click" and not attrs.get("action_id"):
+            raise serializers.ValidationError({"action_id": "Required for kind='click'."})
+        return attrs

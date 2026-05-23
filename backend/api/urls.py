@@ -22,6 +22,11 @@ from .views import (
     BookingListCreateView,
     ConversationCreateView,
     ConversationDetailView,
+    QRActionDetailView,
+    QRActionListCreateView,
+    QRAnalyticsView,
+    QREventCreateView,
+    QRPublicView,
     ResourceAvailabilityView,
     ResourceDetailView,
     ResourceListView,
@@ -75,6 +80,24 @@ urlpatterns = [
         AdminCustomerNoteCreateView.as_view(),
         name="admin-customer-note-create",
     ),
+    # QR — One QR engagement
+    path(
+        "admin/qr-actions/",
+        QRActionListCreateView.as_view(),
+        name="admin-qr-action-list",
+    ),
+    path(
+        "admin/qr-actions/<int:pk>/",
+        QRActionDetailView.as_view(),
+        name="admin-qr-action-detail",
+    ),
+    path(
+        "admin/qr-analytics/",
+        QRAnalyticsView.as_view(),
+        name="admin-qr-analytics",
+    ),
+    path("qr/event/", QREventCreateView.as_view(), name="qr-event"),
+    path("qr/<slug:slug>/", QRPublicView.as_view(), name="qr-public"),
     # Stripe webhook — confirms a booking when its deposit is paid
     path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"),
 ]
