@@ -7,10 +7,13 @@ Five admin endpoints:
   - /api/admin/rewards/ (ViewSet)
   - /api/admin/tiers/   (ViewSet)
 
-All five are gated behind ``IsAdminUser``. The membership read endpoint
-funnels into a single composite payload sized for the customer-detail
-page render — balance, tier badge, next-tier hint, last 20 ledger rows,
-and the catalogue of rewards the customer can currently afford.
+Auth follows project convention: no API-level permission gate (matches
+admin/conversations, admin/bookings, admin/customers, campaigns,
+outbound). The admin surface is gated at the frontend route layer.
+The membership read endpoint funnels into a single composite payload
+sized for the customer-detail page render — balance, tier badge,
+next-tier hint, last 20 ledger rows, and the catalogue of rewards the
+customer can currently afford.
 """
 
 from __future__ import annotations
@@ -19,7 +22,6 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers, status, viewsets
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -96,7 +98,7 @@ class RedeemSerializer(serializers.Serializer):
 class MembershipView(APIView):
     """GET /api/admin/customers/{id}/membership/."""
 
-    permission_classes = [IsAdminUser]
+    permission_classes: list = []
 
     def get(self, request, pk: int):
         customer = get_object_or_404(Customer, pk=pk)
@@ -152,7 +154,7 @@ class MembershipView(APIView):
 class AdjustPointsView(APIView):
     """POST /api/admin/customers/{id}/adjust-points/."""
 
-    permission_classes = [IsAdminUser]
+    permission_classes: list = []
 
     def post(self, request, pk: int):
         customer = get_object_or_404(Customer, pk=pk)
@@ -185,7 +187,7 @@ class RedeemView(APIView):
     succeed past the balance.
     """
 
-    permission_classes = [IsAdminUser]
+    permission_classes: list = []
 
     def post(self, request, pk: int):
         customer = get_object_or_404(Customer, pk=pk)
@@ -242,7 +244,7 @@ class RedeemView(APIView):
 
 
 class RewardViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAdminUser]
+    permission_classes: list = []
     serializer_class = RewardSerializer
 
     def get_queryset(self):
@@ -254,7 +256,7 @@ class RewardViewSet(viewsets.ModelViewSet):
 
 
 class RewardTierViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAdminUser]
+    permission_classes: list = []
     serializer_class = RewardTierSerializer
 
     def get_queryset(self):
