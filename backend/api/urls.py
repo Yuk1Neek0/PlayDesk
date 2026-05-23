@@ -33,6 +33,16 @@ from .views import (
     ResourceListView,
     stripe_webhook,
 )
+from .views_campaigns import (
+    CampaignCancelView,
+    CampaignDetailView,
+    CampaignListCreateView,
+    CampaignRunsListView,
+    CampaignSendView,
+    SegmentDetailView,
+    SegmentListCreateView,
+    SegmentPreviewView,
+)
 from .views_memberships import (
     AdjustPointsView,
     MembershipView,
@@ -131,6 +141,48 @@ urlpatterns = [
     path("qr/event/", QREventCreateView.as_view(), name="qr-event"),
     path("qr/tier/", QRTierBadgeView.as_view(), name="qr-tier-badge"),
     path("qr/<slug:slug>/", QRPublicView.as_view(), name="qr-public"),
+    # Campaigns — segments
+    path(
+        "admin/segments/",
+        SegmentListCreateView.as_view(),
+        name="admin-segment-list",
+    ),
+    path(
+        "admin/segments/<int:pk>/",
+        SegmentDetailView.as_view(),
+        name="admin-segment-detail",
+    ),
+    path(
+        "admin/segments/<int:pk>/preview/",
+        SegmentPreviewView.as_view(),
+        name="admin-segment-preview",
+    ),
+    # Campaigns — campaigns
+    path(
+        "admin/campaigns/",
+        CampaignListCreateView.as_view(),
+        name="admin-campaign-list",
+    ),
+    path(
+        "admin/campaigns/<int:pk>/",
+        CampaignDetailView.as_view(),
+        name="admin-campaign-detail",
+    ),
+    path(
+        "admin/campaigns/<int:pk>/send/",
+        CampaignSendView.as_view(),
+        name="admin-campaign-send",
+    ),
+    path(
+        "admin/campaigns/<int:pk>/cancel/",
+        CampaignCancelView.as_view(),
+        name="admin-campaign-cancel",
+    ),
+    path(
+        "admin/campaigns/<int:pk>/runs/",
+        CampaignRunsListView.as_view(),
+        name="admin-campaign-runs",
+    ),
     # Outbound message log (admin)
     path(
         "admin/outbound/",
