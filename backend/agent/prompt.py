@@ -9,6 +9,10 @@ RAG-vs-SQL partition rule (critical):
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
+
+# Keep in sync with frontend STORE_TIMEZONE and Store.timezone in the DB.
+STORE_TZ = ZoneInfo("America/Toronto")
 
 SYSTEM_PROMPT = """\
 You are the AI front-desk assistant for PlayDesk, a game lounge that offers PS5 consoles, \
@@ -29,7 +33,13 @@ Use `search_knowledge_base` when the customer asks about:
 
 ### Category B — SQL Tools — for structured, live data queries
 Use these tools when the customer asks about real-time or transactional data:
-- `check_availability` — "Is X free at Y time?" or "What times are open on Saturday?"
+- `check_availability` — "Is X free at Y time?" or "What times are open on Saturday?" \
+The tool returns one slot per *free* resource of the requested type. Each slot \
+has `resource_id` and `resource_name` — when the customer asked about a specific \
+resource (e.g. "the Nintendo Switch"), confirm it is only available if that \
+exact `resource_name` appears in the returned slots. If it does not, the \
+specific resource they asked about is taken — say so and offer the others that \
+are free, or suggest a different time.
 - `get_resource_details` — pricing, capacity, equipment list (structured, live record)
 - `create_booking` — to actually make a booking
 - `modify_booking` — to change an existing booking's time or duration
@@ -108,10 +118,10 @@ def language_directive(lang: str) -> str:
 
 def date_directive(now: datetime | None = None) -> str:
     """Return a system-prompt fragment stating today's date for relative-date math."""
-    now = now or datetime.now(UTC)
+    now = (now or datetime.now(UTC)).astimezone(STORE_TZ)
     return (
         "\n\n## Current Date\n"
-        f"Today is {now:%A, %Y-%m-%d} (store timezone UTC). "
+        f"Today is {now:%A, %Y-%m-%d} (store timezone {STORE_TZ.key}). "
         'Resolve relative dates such as "today", "tomorrow", "this Saturday", '
         'or "next Friday" against this date. Always pass tool date arguments as '
         "absolute YYYY-MM-DD values; never invent or guess a date."
