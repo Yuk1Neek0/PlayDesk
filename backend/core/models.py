@@ -9,6 +9,7 @@ ER diagram: Store → Resource → GameMenu / Booking
 from django.conf import settings
 from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import RangeOperators
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models.expressions import Func, Value
 from django.utils.text import slugify
@@ -37,6 +38,7 @@ class Store(models.Model):
     # by the public /qr/[slug] page. Free-form so future branding fields
     # don't need a migration.
     brand = models.JSONField(default=dict, blank=True)
+    points_per_booking = models.PositiveIntegerField(default=10)
 
     class Meta:
         ordering = ["name"]
@@ -424,3 +426,108 @@ class KnowledgeChunk(models.Model):
 
     def __str__(self) -> str:
         return f"Chunk {self.pk} [{self.category}]"
+
+
+# ---------------------------------------------------------------------------
+# Memberships — append-only points ledger, redeemable rewards, tier system
+# ---------------------------------------------------------------------------
+class PointTransactionSource(models.TextChoices):
+    BOOKING = "booking", "Booking"
+    QR_CLICK = "qr_click", "QR click"
+    REDEMPTION = "redemption", "Redemption"
+    ADJUSTMENT = "adjustment", "Adjustment"
+    BACKFILL = "backfill", "Backfill"
+
+
+class PointTransaction(models.Model):
+    """An immutable row in the points ledger.
+
+    Every earn / spend is one row. Current balance is ``balance_after`` on
+    the latest row for the customer — denormalised for fast read, but the
+    source of truth is ``SUM(delta)``. A management command asserts the
+    two agree. Only written via ``core.memberships.award_points``.
+    """
+
+    customer = models.ForeignKey(
+        Customer, on_delete=models.CASCADE, related_name="point_transactions"
+    )
+    delta = models.IntegerField()
+    source = models.CharField(max_length=16, choices=PointTransactionSource.choices)
+    reference = models.CharField(max_length=100, blank=True)
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    balance_after = models.IntegerField()
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["customer", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"PT {self.pk} c={self.customer_id} {self.delta:+d} ({self.source})"
+
+
+class Reward(models.Model):
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="rewards")
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    cost_points = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["store", "cost_points", "name"]
+        indexes = [
+            models.Index(fields=["store", "enabled"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.cost_points}pt)"
+
+
+class Redemption(models.Model):
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="redemptions")
+    reward = models.ForeignKey(Reward, on_delete=models.PROTECT, related_name="redemptions")
+    transaction = models.OneToOneField(
+        PointTransaction, on_delete=models.CASCADE, related_name="redemption"
+    )
+    staff = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    redeemed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-redeemed_at"]
+
+    def __str__(self) -> str:
+        return f"Redemption {self.pk} c={self.customer_id} r={self.reward_id}"
+
+
+class RewardTier(models.Model):
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="reward_tiers")
+    name = models.CharField(max_length=80)
+    min_lifetime_points = models.PositiveIntegerField()
+    perks_text = models.TextField(blank=True)
+    position = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ["store", "position"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["store", "position"], name="rewardtier_unique_store_position"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.store.name} #{self.position} – {self.name}"
