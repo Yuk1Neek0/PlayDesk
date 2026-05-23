@@ -32,6 +32,7 @@ from .views import (
     ResourceListView,
     stripe_webhook,
 )
+from .views_outbound import OutboundMessageListView
 from .webhooks_twilio import twilio_sms_webhook
 
 app_name = "api"
@@ -99,6 +100,12 @@ urlpatterns = [
     ),
     path("qr/event/", QREventCreateView.as_view(), name="qr-event"),
     path("qr/<slug:slug>/", QRPublicView.as_view(), name="qr-public"),
+    # Outbound message log (admin)
+    path(
+        "admin/outbound/",
+        OutboundMessageListView.as_view(),
+        name="admin-outbound-list",
+    ),
     # Stripe webhook — confirms a booking when its deposit is paid
     path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"),
     # Twilio SMS webhook — wires SMS into the agent loop

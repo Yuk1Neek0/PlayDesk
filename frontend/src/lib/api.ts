@@ -249,6 +249,35 @@ export function adminAddCustomerNote(id: number, body: string): Promise<Customer
   });
 }
 
+// ── Admin: outbound messages ──────────────────────────────────────────────
+
+export type OutboundStatus = "queued" | "sent" | "failed" | "cancelled";
+export type OutboundChannel = "sms" | "web_chat";
+
+export interface OutboundMessage {
+  id: number;
+  customer_id: number;
+  customer_name: string;
+  customer_phone: string;
+  channel: OutboundChannel;
+  template_key: string;
+  body: string;
+  status: OutboundStatus;
+  scheduled_for: string;
+  sent_at: string | null;
+  failure_reason: string;
+  provider_message_id: string;
+  created_at: string;
+}
+
+export function adminListOutboundMessages(params: {
+  customer_id?: number;
+  status?: OutboundStatus;
+  limit?: number;
+}): Promise<OutboundMessage[]> {
+  return request(`/api/admin/outbound${queryString(params)}`);
+}
+
 // ── One QR ────────────────────────────────────────────────────────────────
 
 export type QRActionKind =

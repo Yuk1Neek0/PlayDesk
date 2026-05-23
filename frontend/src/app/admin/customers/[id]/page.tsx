@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import OutboundMessagesSection from "@/components/admin/outbound-messages-section";
 import { fmtDate, fmtTime, relTime } from "@/components/pd-ui";
 import {
   adminAddCustomerNote,
@@ -200,6 +201,9 @@ export default function CustomerDetailPage() {
             )}
           </div>
         </section>
+
+        {/* Outbound messages — confirmations, reminders, no-show recovery, ... */}
+        <OutboundMessagesSection customerId={c.id} />
       </div>
     </div>
   );
