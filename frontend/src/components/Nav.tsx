@@ -18,6 +18,10 @@ const LINKS: { href: string; label: string }[] = [
 export default function Nav() {
   const pathname = usePathname();
 
+  // Customer-facing QR landing pages are scanned from the front desk —
+  // they intentionally render without any app chrome.
+  if (pathname?.startsWith("/qr/")) return null;
+
   return (
     <nav className="pd-nav">
       <Link className="pd-nav-brand" href="/">

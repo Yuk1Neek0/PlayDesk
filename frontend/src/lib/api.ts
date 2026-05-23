@@ -240,3 +240,102 @@ export function adminAddCustomerNote(id: number, body: string): Promise<Customer
     body: JSON.stringify({ body }),
   });
 }
+
+// ── One QR ────────────────────────────────────────────────────────────────
+
+export type QRActionKind =
+  | "review"
+  | "instagram"
+  | "tiktok"
+  | "rednote"
+  | "wechat"
+  | "wifi"
+  | "custom";
+
+export interface QRAction {
+  id: number;
+  kind: QRActionKind;
+  label: string;
+  target_url: string;
+  position: number;
+  reward_points: number;
+  enabled: boolean;
+}
+
+export interface QRStoreBrand {
+  logo_url?: string;
+  accent?: string;
+  [k: string]: unknown;
+}
+
+export interface QRPublicPayload {
+  store: { id: number; name: string; slug: string; brand: QRStoreBrand };
+  actions: QRAction[];
+}
+
+export interface QRAnalyticsBreakdown {
+  action_id: number;
+  action__label: string;
+  action__kind: QRActionKind;
+  clicks: number;
+}
+
+export interface QRAnalytics {
+  scans: number;
+  clicks: number;
+  engagement_rate: number;
+  per_action: QRAnalyticsBreakdown[];
+  days: number;
+}
+
+export function getQRPublic(slug: string): Promise<QRPublicPayload> {
+  return request(`/api/qr/${slug}`);
+}
+
+export function postQREvent(body: {
+  slug: string;
+  kind: "scan" | "click";
+  action_id?: number;
+}): Promise<{ ok: boolean }> {
+  return request(`/api/qr/event`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminListQRActions(store: number): Promise<QRAction[]> {
+  return request(`/api/admin/qr-actions${queryString({ store })}`);
+}
+
+export function adminCreateQRAction(body: {
+  store: number;
+  kind: QRActionKind;
+  label: string;
+  target_url: string;
+  position?: number;
+  reward_points?: number;
+  enabled?: boolean;
+}): Promise<QRAction> {
+  return request(`/api/admin/qr-actions`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminUpdateQRAction(
+  id: number,
+  body: Partial<Omit<QRAction, "id">>,
+): Promise<QRAction> {
+  return request(`/api/admin/qr-actions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminDeleteQRAction(id: number): Promise<void> {
+  return request(`/api/admin/qr-actions/${id}`, { method: "DELETE" });
+}
+
+export function adminGetQRAnalytics(store: number, days = 7): Promise<QRAnalytics> {
+  return request(`/api/admin/qr-analytics${queryString({ store, days })}`);
+}
