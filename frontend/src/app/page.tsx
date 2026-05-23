@@ -19,7 +19,7 @@ import {
   type BookingCreate,
   type Resource as ApiResource,
 } from "@/lib/api";
-import { isoAt, pad, toSlotData, type SlotData } from "@/lib/booking-availability";
+import { isoAt, pad, storeToday, toSlotData, type SlotData } from "@/lib/booking-availability";
 
 type ConfirmState = "idle" | "loading" | "success" | "error";
 type StepFilter = "all" | ResourceType;
@@ -68,7 +68,7 @@ export default function BookingPage() {
   });
   const [resource, setResource] = useState<Resource | null>(null);
   const [filter, setFilter] = useState<StepFilter>("all");
-  const [date, setDate] = useState<Date>(() => new Date(2026, 4, 22));
+  const [date, setDate] = useState<Date>(() => storeToday());
   const [slot, setSlot] = useState<string | null>(null);
   const [duration, setDuration] = useState(2);
   const [name, setName] = useState("");
@@ -202,9 +202,9 @@ export default function BookingPage() {
     [filter, resourcesState.data],
   );
 
-  // A 14-day strip starting "today" (21 May 2026 in the prototype's clock).
+  // A 14-day strip starting at today in the store's timezone.
   const dateStrip = useMemo(() => {
-    const today = new Date(2026, 4, 21);
+    const today = storeToday();
     const arr: Date[] = [];
     for (let i = 0; i < 14; i++) {
       const d = new Date(today);
@@ -299,7 +299,7 @@ export default function BookingPage() {
         <div className="pd-date-strip" role="listbox">
           {dateStrip.map((d) => {
             const selected = isoDate(d) === isoDate(date);
-            const isToday = isoDate(d) === isoDate(new Date(2026, 4, 21));
+            const isToday = isoDate(d) === isoDate(storeToday());
             return (
               <button
                 key={d.toISOString()}

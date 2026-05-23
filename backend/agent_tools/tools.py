@@ -141,7 +141,26 @@ def check_availability(inp: CheckAvailabilityInput) -> CheckAvailabilityOutput:
             ],
         )
     try:
+        import zoneinfo
+
         from core.models import Resource
+
+        # Resources of the right type with sufficient capacity.
+        candidates = list(
+            Resource.objects.filter(
+                type=inp.resource_type,
+                capacity__gte=inp.party_size,
+            ).select_related("store")
+        )
+
+        # The schema documents time_range as store-local time. Build the
+        # requested window in the store's timezone so it compares correctly
+        # against booking start_time/end_time (which are stored in UTC).
+        tz_name = candidates[0].store.timezone if candidates else "UTC"
+        try:
+            tz = zoneinfo.ZoneInfo(tz_name)
+        except Exception:  # noqa: BLE001
+            tz = UTC
 
         # Parse requested window
         requested_date = datetime.strptime(inp.date, "%Y-%m-%d").date()
@@ -155,7 +174,7 @@ def check_availability(inp: CheckAvailabilityInput) -> CheckAvailabilityOutput:
             requested_date.day,
             start_h,
             start_m,
-            tzinfo=UTC,
+            tzinfo=tz,
         )
         requested_end = datetime(
             requested_date.year,
@@ -163,20 +182,18 @@ def check_availability(inp: CheckAvailabilityInput) -> CheckAvailabilityOutput:
             requested_date.day,
             end_h,
             end_m,
-            tzinfo=UTC,
-        )
-
-        # Resources of the right type with sufficient capacity.
-        candidates = list(
-            Resource.objects.filter(
-                type=inp.resource_type,
-                capacity__gte=inp.party_size,
-            )
+            tzinfo=tz,
         )
 
         available_resources = _resources_free_in(candidates, requested_start, requested_end)
         available_slots = [
-            TimeSlot(start=requested_start, end=requested_end) for _ in available_resources
+            TimeSlot(
+                start=requested_start,
+                end=requested_end,
+                resource_id=r.pk,
+                resource_name=r.name,
+            )
+            for r in available_resources
         ]
 
         # Conflict-aware suggestions: when nothing is free for the requested
