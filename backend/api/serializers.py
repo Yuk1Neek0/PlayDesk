@@ -201,6 +201,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             "customer_identifier",
             "started_at",
             "status",
+            "channel",
         ]
         read_only_fields = ["id", "started_at"]
 

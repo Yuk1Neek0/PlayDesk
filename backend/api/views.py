@@ -362,6 +362,10 @@ class AdminConversationListView(ListAPIView):
         conv_status = self.request.query_params.get("status")
         if conv_status:
             qs = qs.filter(status=conv_status)
+        channel = self.request.query_params.get("channel")
+        if channel:
+            # Unknown channel values just return an empty list — no 400.
+            qs = qs.filter(channel=channel)
         ordering = self.request.query_params.get("ordering")
         if ordering:
             qs = qs.order_by(ordering)

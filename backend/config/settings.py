@@ -151,3 +151,9 @@ STRIPE_SUCCESS_URL = env("STRIPE_SUCCESS_URL", default="http://localhost:3000/?p
 STRIPE_CANCEL_URL = env("STRIPE_CANCEL_URL", default="http://localhost:3000/?payment=cancelled")
 # How long an unpaid pending_payment hold survives before expire_holds reaps it.
 STRIPE_HOLD_MINUTES = env.int("STRIPE_HOLD_MINUTES", default=10)
+
+# ---------------------------------------------------------------------------
+# Twilio — SMS channel (multi-channel epic)
+# ---------------------------------------------------------------------------
+TWILIO_ACCOUNT_SID = env("TWILIO_ACCOUNT_SID", default="")
+TWILIO_AUTH_TOKEN = env("TWILIO_AUTH_TOKEN", default="")

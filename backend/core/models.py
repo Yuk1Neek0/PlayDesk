@@ -255,6 +255,21 @@ class ConversationStatus(models.TextChoices):
     ESCALATED = "escalated", "Escalated"
 
 
+class ConversationChannel(models.TextChoices):
+    """Inbound channel a conversation arrived through.
+
+    Adapter classes in `agent/channels/` translate each channel's raw
+    payload into a NormalizedMessage so the agent loop stays channel-
+    agnostic.
+    """
+
+    WEB_CHAT = "web_chat", "Web chat"
+    SMS = "sms", "SMS"
+    WHATSAPP = "whatsapp", "WhatsApp"
+    PHONE = "phone", "Phone"
+    MANUAL_STAFF = "manual_staff", "Staff (manual)"
+
+
 class Conversation(models.Model):
     customer_identifier = models.CharField(max_length=255)
     started_at = models.DateTimeField(auto_now_add=True)
@@ -262,6 +277,11 @@ class Conversation(models.Model):
         max_length=20,
         choices=ConversationStatus.choices,
         default=ConversationStatus.ACTIVE,
+    )
+    channel = models.CharField(
+        max_length=16,
+        choices=ConversationChannel.choices,
+        default=ConversationChannel.WEB_CHAT,
     )
 
     class Meta:

@@ -32,6 +32,7 @@ from .views import (
     ResourceListView,
     stripe_webhook,
 )
+from .webhooks_twilio import twilio_sms_webhook
 
 app_name = "api"
 
@@ -100,4 +101,6 @@ urlpatterns = [
     path("qr/<slug:slug>/", QRPublicView.as_view(), name="qr-public"),
     # Stripe webhook — confirms a booking when its deposit is paid
     path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"),
+    # Twilio SMS webhook — wires SMS into the agent loop
+    path("webhooks/twilio/sms/", twilio_sms_webhook, name="twilio-sms-webhook"),
 ]

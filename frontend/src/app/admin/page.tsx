@@ -51,6 +51,9 @@ export default function AdminPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [channelFilter, setChannelFilter] = useState<
+    "all" | "web_chat" | "sms" | "whatsapp" | "phone" | "manual_staff"
+  >("all");
   const [selectedConv, setSelectedConv] = useState<number | null>(null);
   const [preview, setPreview] = useState<PreviewState>({
     loading: false,
@@ -115,6 +118,35 @@ export default function AdminPage() {
       clearInterval(poll);
     };
   }, []);
+
+  // Re-fetch conversations whenever the channel filter changes. Skipped
+  // on first mount because the initial Promise.all already loaded them.
+  const didMountConvRef = useRef(false);
+  useEffect(() => {
+    if (!didMountConvRef.current) {
+      didMountConvRef.current = true;
+      return;
+    }
+    let cancelled = false;
+    const params = channelFilter === "all" ? undefined : { channel: channelFilter };
+    adminListConversations(params)
+      .then((cv) => {
+        if (cancelled) return;
+        setConversations(cv.results);
+        // If the previously-selected conversation was filtered out, drop it.
+        if (cv.results.every((c) => c.id !== selectedConv)) {
+          setSelectedConv(cv.results[0]?.id ?? null);
+        }
+      })
+      .catch(() => {
+        /* keep last good data; user can re-try */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // selectedConv intentionally omitted — we only want re-fetch on filter change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelFilter]);
 
   // Load the selected conversation's transcript for the preview panel.
   useEffect(() => {
@@ -220,6 +252,26 @@ export default function AdminPage() {
                 <span className="pd-card-sub">
                   {conversations.filter((c) => c.status === "active").length} active
                 </span>
+              </div>
+              <div className="pd-seg pd-seg--sm" style={{ marginBottom: 12 }}>
+                {(
+                  [
+                    ["all", "All"],
+                    ["web_chat", "Web"],
+                    ["sms", "SMS"],
+                    ["whatsapp", "WhatsApp"],
+                    ["phone", "Phone"],
+                    ["manual_staff", "Staff"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    className={`pd-seg-item ${channelFilter === k ? "is-active" : ""}`}
+                    onClick={() => setChannelFilter(k)}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
               <div className="pd-conv-list">
                 {conversations.length === 0 && (

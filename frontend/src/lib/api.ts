@@ -164,8 +164,16 @@ export function getConversation(id: number): Promise<ConversationDetail> {
 
 // ── Admin ──────────────────────────────────────────────────────────────────
 
+export type ConversationChannel =
+  | "web_chat"
+  | "sms"
+  | "whatsapp"
+  | "phone"
+  | "manual_staff";
+
 export function adminListConversations(params?: {
   status?: "active" | "closed";
+  channel?: ConversationChannel;
   ordering?: string;
 }): Promise<PaginatedConversations> {
   return request(`/api/admin/conversations${queryString(params)}`);

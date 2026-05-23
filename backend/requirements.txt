@@ -8,3 +8,4 @@ anthropic
 openai
 stripe
 phonenumbers==9.0.18
+twilio==9.4.4
