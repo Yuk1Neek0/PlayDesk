@@ -8,7 +8,7 @@
 
 import { notFound } from "next/navigation";
 
-import { getQRPublic, type QRPublicPayload } from "@/lib/api";
+import { type QRPublicPayload } from "@/lib/api";
 
 import QRLanding from "./QRLanding";
 
@@ -17,11 +17,19 @@ interface Params {
 }
 
 async function loadPayload(slug: string): Promise<QRPublicPayload | null> {
-  // SSR runs server-side where `fetch` resolves directly to the Django
-  // backend via the rewrite proxy. Catch a 404 and surface it to the
-  // Next.js notFound flow rather than crashing the render.
+  // SSR runs inside the Next.js container, where same-origin `/api/...`
+  // does not resolve (the rewrite proxy in next.config.mjs only applies
+  // to browser requests). Build an absolute URL to the backend via the
+  // server-only `BACKEND_ORIGIN` env (set by docker-compose).
+  const origin = process.env.BACKEND_ORIGIN ?? "http://127.0.0.1:8000";
   try {
-    return await getQRPublic(slug);
+    const resp = await fetch(`${origin}/api/qr/${encodeURIComponent(slug)}/`, {
+      // Disable Next.js's data cache so a freshly-toggled action shows up
+      // on the next scan.
+      cache: "no-store",
+    });
+    if (!resp.ok) return null;
+    return (await resp.json()) as QRPublicPayload;
   } catch {
     return null;
   }
