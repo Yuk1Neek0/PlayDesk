@@ -686,7 +686,7 @@ class QREventCreateView(APIView):
             except (Customer.DoesNotExist, ValueError):
                 customer = None
 
-        QREvent.objects.create(
+        event = QREvent.objects.create(
             store=store,
             action=action,
             customer=customer,
@@ -697,13 +697,21 @@ class QREventCreateView(APIView):
 
         # Award points on a click with a linked customer + action.
         if customer is not None and action is not None and data["kind"] == "click":
-            customer.tags = list(set(customer.tags))  # touch — keeps last_visit_at fresh
-            # No dedicated points column yet — store an audit hint in tags.
-            # (A future `Customer.points` column belongs to a memberships slice.)
             tag = f"qr:{action.kind}"
             if tag not in customer.tags:
                 customer.tags = customer.tags + [tag]
                 customer.save(update_fields=["tags"])
+            if action.reward_points > 0:
+                try:
+                    from core.memberships import award_points as _award_points
+
+                    _award_points(customer, action.reward_points, "qr_click", str(event.id))
+                except Exception:
+                    import logging
+
+                    logging.getLogger(__name__).exception(
+                        "award_points failed for QR click event=%s", event.id
+                    )
 
         return Response({"ok": True}, status=status.HTTP_201_CREATED)
 

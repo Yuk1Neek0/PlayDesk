@@ -301,6 +301,7 @@ class BookingStatus(models.TextChoices):
     CONFIRMED = "confirmed", "Confirmed"
     CANCELLED = "cancelled", "Cancelled"
     PENDING_PAYMENT = "pending_payment", "Pending Payment"
+    COMPLETED = "completed", "Completed"
 
 
 class BookingSource(models.TextChoices):

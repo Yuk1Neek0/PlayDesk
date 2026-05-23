@@ -23,7 +23,8 @@ from django.db.models import F
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
-from .models import Booking, BookingStatus, Customer
+from .memberships import award_points
+from .models import Booking, BookingStatus, Customer, PointTransaction
 
 
 def _is_visit(status: str) -> bool:
@@ -89,3 +90,25 @@ def _decrement_on_delete(sender, instance: Booking, **kwargs) -> None:
     Customer.objects.filter(pk=instance.customer_id, total_visits__gt=0).update(
         total_visits=F("total_visits") - 1
     )
+
+
+@receiver(post_save, sender=Booking)
+def _award_points_on_completion(sender, instance: Booking, created: bool, **kwargs) -> None:
+    """Credit the customer with points the first time a booking flips to completed.
+
+    Idempotent: a second save while already-completed (e.g. a status touch) does
+    not double-credit, guarded by a dedup check on (source, reference).
+    """
+    if instance.customer_id is None:
+        return
+    if instance.status != BookingStatus.COMPLETED:
+        return
+    reference = str(instance.pk)
+    if PointTransaction.objects.filter(
+        customer_id=instance.customer_id, source="booking", reference=reference
+    ).exists():
+        return
+    points = int(instance.resource.store.points_per_booking)
+    if points <= 0:
+        return
+    award_points(instance.customer, points, "booking", reference)
