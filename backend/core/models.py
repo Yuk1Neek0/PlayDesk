@@ -7,6 +7,7 @@ ER diagram: Store → Resource → GameMenu / Booking
 """
 
 from datetime import time
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.postgres.constraints import ExclusionConstraint
@@ -378,6 +379,18 @@ class Booking(models.Model):
         choices=BookingSource.choices,
         default=BookingSource.MANUAL,
     )
+    # v8 pricing-rules: total frozen at booking creation. nullable so the
+    # additive migration can ship safely; the backfill in 0014_backfill...
+    # populates every existing row before any future hard NOT NULL.
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # JSON snapshot of the line items the engine emitted at quote time.
+    # Stored as ``list[{"label": str, "amount": str, "rule_id": int|null}]``;
+    # the ``amount`` is stringified Decimal so the JSON column round-trips
+    # cleanly. v9 billing-payments reads this for receipt rendering.
+    rule_snapshot = models.JSONField(default=list, blank=True)
+    # v9 billing-payments populates this on partial refunds; v8 ships it as
+    # a zero-default placeholder so the field is available at merge time.
+    refund_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

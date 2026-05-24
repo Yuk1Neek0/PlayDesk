@@ -9,4 +9,6 @@ urlpatterns = [
     path("api/", include("api.urls")),
     # Agent — conversation creation + SSE streaming messages (agent app)
     path("api/", include("agent.urls")),
+    # Pricing — public POST /api/quote/ + admin /api/admin/pricing-rules/
+    path("api/", include("pricing.urls")),
 ]

@@ -277,6 +277,48 @@ class BookingListCreateView(ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = BookingCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        # v8 pricing-rules: optimistic-concurrency check. The frontend
+        # passes ``expected_total_amount`` (the price the customer saw on
+        # the booking page). If a rule changed between quote and submit
+        # and the recomputed total now differs by > $0.01, return 409 with
+        # the new quote so the UI can re-prompt for confirmation. Old
+        # clients that omit the field just accept whatever the server
+        # computes.
+        expected_raw = request.data.get("expected_total_amount")
+        if expected_raw is not None:
+            from decimal import Decimal, InvalidOperation
+
+            from pricing.engine import compute_quote
+
+            try:
+                expected_total = Decimal(str(expected_raw))
+            except (InvalidOperation, ValueError, TypeError):
+                return Response(
+                    {"expected_total_amount": "must be a number"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            validated = serializer.validated_data
+            resource = validated["resource"]
+            try:
+                customer = resource.store.customers.filter(
+                    phone=validated["customer_phone"]
+                ).first()
+            except Exception:  # noqa: BLE001 — defensive; new customer is fine
+                customer = None
+            quote = compute_quote(
+                resource,
+                validated["start_time"],
+                validated["end_time"],
+                customer=customer,
+            )
+            if abs(quote.total_amount - expected_total) > Decimal("0.01"):
+                return Response(
+                    {"error": "quote_changed", "new_quote": quote.to_dict()},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
         try:
             booking = serializer.save()
         except IntegrityError:
