@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from django.conf import settings
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
@@ -45,15 +46,25 @@ def _booking_context(booking: Booking) -> dict:
     """Render context shared by all four templates.
 
     All four templates reference the same four placeholders, so one
-    builder keeps them in sync.
+    builder keeps them in sync. v10b checkin adds a fifth: the
+    `checkin_url` consumed by the extended booking_confirmation body —
+    omitted only if the booking somehow has no `check_in_token` (legacy
+    rows before backfill, or hand-crafted ORM inserts).
     """
     customer = booking.customer
-    return {
+    ctx = {
         "customer_name": (customer.name if customer else "") or "",
         "store_name": booking.resource.store.name,
         "start_time": booking.start_time.strftime("%Y-%m-%d %H:%M"),
         "resource_name": booking.resource.name,
     }
+    if booking.check_in_token:
+        site_url = getattr(settings, "SITE_URL", "").rstrip("/")
+        ctx["checkin_url"] = f"{site_url}/c/{booking.check_in_token}"
+    else:
+        # Defensive default — the template still needs a value to render.
+        ctx["checkin_url"] = ""
+    return ctx
 
 
 @receiver(pre_save, sender=Booking)

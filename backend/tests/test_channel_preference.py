@@ -38,6 +38,9 @@ def _ctx() -> dict:
         "store_name": "Channel Pref Store",
         "start_time": "2026-10-01 18:00",
         "resource_name": "PS5 #1",
+        # v10b checkin appended {checkin_url} to booking_confirmation —
+        # callers passing this context dict must include the placeholder.
+        "checkin_url": "http://localhost:3000/c/TEST2345",
     }
 
 

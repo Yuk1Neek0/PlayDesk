@@ -49,10 +49,12 @@ class SafeFormatter(string.Formatter):
 # ---------------------------------------------------------------------------
 TEMPLATES: dict[str, tuple[str, str]] = {
     "booking_confirmation": (
+        # v10b checkin extends this body to include the /c/<token>/ URL
+        # so the customer can self-check-in on arrival in a single tap.
         "Hi {customer_name}, your booking at {store_name} is confirmed for "
-        "{start_time} on {resource_name}. See you then!",
+        "{start_time} on {resource_name}. Check in on arrival: {checkin_url}",
         "您好 {customer_name}，您在 {store_name} 的预订已确认："
-        "{start_time}，{resource_name}。期待您的光临！",
+        "{start_time}，{resource_name}。到店签到：{checkin_url}",
     ),
     "reminder_24h": (
         "Reminder: your booking at {store_name} is tomorrow at {start_time} "

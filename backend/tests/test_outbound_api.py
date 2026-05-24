@@ -33,6 +33,8 @@ def _ctx():
         "store_name": "Outbound Admin Store",
         "start_time": "2026-10-01 18:00",
         "resource_name": "PS5 #1",
+        # v10b checkin appended {checkin_url} to booking_confirmation.
+        "checkin_url": "http://localhost:3000/c/TEST2345",
     }
 
 
