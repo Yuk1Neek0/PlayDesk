@@ -109,9 +109,7 @@ class TestBookingCreateQuote:
         )
         assert resp.status_code == status.HTTP_201_CREATED, resp.content
 
-    def test_expected_total_mismatch_returns_409_with_new_quote(
-        self, api_client, store, resource
-    ):
+    def test_expected_total_mismatch_returns_409_with_new_quote(self, api_client, store, resource):
         # Client thought 120; meanwhile a peak rule was added. Should 409 + new_quote.
         from pricing.models import PricingRule
 
