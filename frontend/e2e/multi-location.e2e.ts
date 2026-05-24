@@ -1,6 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
-import { signInAsStaff } from "./helpers";
+import { bookFirstFreeSlot, signInAsStaff } from "./helpers";
 
 // v6 multi-location, task #163 — cross-store isolation invariant.
 //
@@ -17,22 +17,11 @@ import { signInAsStaff } from "./helpers";
 const FLAGSHIP_SLUG = "playdesk-flagship";
 const NORTH_SLUG = "playdesk-north";
 
-/** Click date cells until the slot grid offers a bookable hour; return it. */
-async function pickFirstFreeSlot(page: Page): Promise<string> {
-  const dates = page.locator("button.pd-date-cell");
-  const count = await dates.count();
-  for (let i = 0; i < count; i++) {
-    await dates.nth(i).click();
-    await page.waitForTimeout(2000);
-    const free = page.locator(".pd-slots-grid button.pd-slot:not([disabled])").first();
-    if ((await free.count()) > 0) {
-      const label = (await free.locator(".pd-slot-time").textContent())?.trim() ?? "";
-      await free.click();
-      return label;
-    }
-  }
-  return "";
-}
+// Multi-step journey: admin sign-in + store switch + customer booking
+// (with retry-on-conflict) + admin refresh + cross-store assert. Bumps
+// the default 90s timeout — the booking flow alone can walk a half-dozen
+// dates when accumulated state has filled the early ones.
+test.setTimeout(180_000);
 
 test("cross-store isolation: book at North, only visible while admin is on North", async ({
   page,
@@ -66,28 +55,23 @@ test("cross-store isolation: book at North, only visible while admin is on North
   await expect(page.locator(".pd-tr", { hasText: northCustomer })).toHaveCount(0);
 
   // ── Anonymous customer books at /s/playdesk-north/book ──
-  const customerPage = await context.newPage();
-  // Clean slate: anonymous context. The booking flow doesn't need auth.
+  // Use a *separate* browser context so the admin sessionid + csrftoken
+  // cookies don't bleed into the public booking POST. DRF's
+  // SessionAuthentication enforces CSRF whenever a session cookie is
+  // present, and the public booking endpoint doesn't get a CSRF token
+  // from a customer-flow page — so the inherited cookie would 403 the
+  // create call. A fresh context starts cookie-free, the way a real
+  // anonymous visitor at /s/<slug>/book is.
+  const browser = context.browser();
+  if (!browser) throw new Error("context lost its browser handle");
+  const baseURL = process.env.PLAYDESK_WEB ?? "http://localhost:3000";
+  const customerContext = await browser.newContext({ baseURL });
+  const customerPage = await customerContext.newPage();
   await customerPage.goto(`/s/${NORTH_SLUG}/book`);
-  await expect(customerPage.locator("button.pd-rcard").first()).toBeVisible();
-
-  // Pick the first resource + shortest duration.
-  await customerPage.locator("button.pd-rcard").first().click();
-  await customerPage.locator("button.pd-seg-item").first().click();
-
-  const slot = await pickFirstFreeSlot(customerPage);
-  expect(
-    slot,
-    "no free slot found at the North store — availability is broken",
-  ).not.toBe("");
-
-  await customerPage.locator("input.pd-input").first().fill(northCustomer);
-  await customerPage.locator("input.pd-input").nth(1).fill("+1 416 555 0199");
-  await customerPage.getByRole("button", { name: /Confirm booking/ }).click();
-  await expect(
-    customerPage.getByRole("heading", { name: /See you at PlayDesk/ }),
-  ).toBeVisible();
+  // Helper handles resource + duration + slot picking, with 409 retries.
+  await bookFirstFreeSlot(customerPage, northCustomer, "+1 416 555 0199");
   await customerPage.close();
+  await customerContext.close();
 
   // ── Admin (still on North): refresh, see the new booking ──
   await page.reload();

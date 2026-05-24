@@ -33,7 +33,12 @@ test("Test 2 — wrong password shows inline error", async ({ page }) => {
   await page.getByLabel("Password").fill("definitely-wrong-password-xyz");
   await page.getByRole("button", { name: /Sign in/ }).click();
 
-  await expect(page.getByRole("alert")).toContainText(/Invalid credentials/);
+  // The login form renders its 401 alert via `<div class="pd-error" role="alert">`.
+  // Next.js also ships a built-in route announcer with `role="alert"`, so we
+  // scope to the form's alert class to keep this strict-mode safe.
+  await expect(page.locator(".pd-error[role='alert']")).toContainText(
+    /Invalid credentials/,
+  );
   // Still on the login page.
   await expect(page).toHaveURL(/\/staff\/login/);
 });

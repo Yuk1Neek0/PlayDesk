@@ -316,13 +316,15 @@ class Command(BaseCommand):
         # Two upcoming bookings — pick a resource at Flagship for both.
         # Idempotent: if the customer already has >=2 upcoming bookings,
         # leave them alone (avoids the GIST overlap constraint firing on
-        # a re-seed against a shifted `now()`).
+        # a re-seed against a shifted `now()`). Cancelled bookings don't
+        # count — the customer-portal e2e cancels seeded bookings then
+        # re-runs, and we want fresh confirmed rows on the next seed.
         resource = flagship.resources.order_by("id").first()
         if resource is not None:
             existing_upcoming = Booking.objects.filter(
                 customer=e2e_customer,
                 start_time__gt=timezone.now(),
-            ).count()
+            ).exclude(status=BookingStatus.CANCELLED).count()
             if existing_upcoming < 2:
                 now = timezone.now()
                 for offset_h, length_h in [(48, 2), (96, 2)]:

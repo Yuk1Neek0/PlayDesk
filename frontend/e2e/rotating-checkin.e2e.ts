@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { csrfHeaders } from "./helpers";
+
 // v11a rotating-checkin — end-to-end coverage for the door-QR flow.
 //
 // What it drives:
@@ -44,6 +46,10 @@ interface RequestOtpResponse {
 
 async function staffLogin(page: Page): Promise<void> {
   await page.goto("/staff/login");
+  // /staff/login server-redirects to /admin when the session cookie is
+  // already valid (e.g. a prior test in the same context already signed
+  // in). Detect either landing and skip the form when the cookie carries.
+  if (/\/admin/.test(page.url())) return;
   await page.getByLabel("Username").fill(STAFF_USERNAME);
   await page.getByLabel("Password").fill(STAFF_PASSWORD);
   await page.getByRole("button", { name: /Sign in/ }).click();
@@ -53,12 +59,16 @@ async function staffLogin(page: Page): Promise<void> {
 async function freshRotatingKey(page: Page): Promise<string> {
   // Sign in as staff (cookies sticky on context), then POST to the
   // admin rotate endpoint to guarantee a fresh, fully-valid key.
+  // /api/admin/* is gated by StaffOnlyMiddleware AND DRF SessionAuthentication
+  // (which enforces CSRF on unsafe methods), so we mirror the csrftoken
+  // cookie into X-CSRFToken just like the frontend's adminFetch does.
   await staffLogin(page);
   const resp = await page.request.post("/api/admin/checkin/rotate/", {
     data: {},
     headers: {
       "Content-Type": "application/json",
       "X-PD-Store-Slug": FLAGSHIP_SLUG,
+      ...(await csrfHeaders(page.context())),
     },
   });
   expect(resp.ok(), `rotate failed: ${resp.status()}`).toBeTruthy();
@@ -98,10 +108,6 @@ test("happy path: scan, phone, OTP, single-or-multi match, check in", async ({
   await context.clearCookies();
   const key = await freshRotatingKey(page);
   await ensureSameDayBookings(page);
-
-  // Pull the OTP first (test_mode). Then drop staff cookies so the public
-  // flow runs as an anonymous customer.
-  const code = await fetchTestOTP(page, RC_PHONE, key);
   await context.clearCookies();
 
   // Land on the public page.
@@ -110,14 +116,17 @@ test("happy path: scan, phone, OTP, single-or-multi match, check in", async ({
     timeout: 15_000,
   });
 
-  // Step 1 — phone.
+  // Step 1 — phone. The submit fires request-otp which mints OTP B.
   await page.getByTestId("phone-input").fill(RC_PHONE);
   await page.getByTestId("phone-submit").click();
 
-  // Step 2 — OTP. The UI already created a fresh OTP that we just
-  // superseded by calling test_mode again; the latest valid code is
-  // the one we captured.
+  // Step 2 — OTP. Call test_mode AFTER the UI's request-otp so we
+  // supersede B with a known-value OTP C; do_request_code invalidates
+  // the prior un-used OTP so only C will verify. (Calling test_mode
+  // BEFORE step 1 would lose the race — the UI's request-otp creates
+  // the freshest one and it wouldn't be in this test's `code`.)
   await expect(page.getByTestId("otp-input")).toBeVisible({ timeout: 15_000 });
+  const code = await fetchTestOTP(page, RC_PHONE, key);
   await page.getByTestId("otp-input").fill(code);
   await page.getByTestId("otp-submit").click();
 
@@ -145,10 +154,13 @@ test("expired key: /c-in/?k=BADKEY shows ask-staff card", async ({ page }) => {
 test("wrong OTP: stays on OTP step + inline error", async ({ page, context }) => {
   await context.clearCookies();
   const key = await freshRotatingKey(page);
+  // Use a unique phone so we don't collide with the 1/minute OTP rate
+  // bucket Test 1 already filled for RC_PHONE within this run.
+  const uniquePhone = `+1555${Date.now() % 10_000_000}`.slice(0, 13);
   await context.clearCookies();
 
   await page.goto(`/c-in/?k=${key}`);
-  await page.getByTestId("phone-input").fill(RC_PHONE);
+  await page.getByTestId("phone-input").fill(uniquePhone);
   await page.getByTestId("phone-submit").click();
   await expect(page.getByTestId("otp-input")).toBeVisible({ timeout: 15_000 });
 
@@ -167,13 +179,16 @@ test("walk-in: phone with no booking shows walk-in card", async ({ page, context
   await context.clearCookies();
   const key = await freshRotatingKey(page);
   const walkInPhone = `+1555${Date.now() % 10_000_000}`.slice(0, 13);
-  const code = await fetchTestOTP(page, walkInPhone, key);
   await context.clearCookies();
 
   await page.goto(`/c-in/?k=${key}`);
   await page.getByTestId("phone-input").fill(walkInPhone);
   await page.getByTestId("phone-submit").click();
   await expect(page.getByTestId("otp-input")).toBeVisible({ timeout: 15_000 });
+  // Capture OTP AFTER the UI's request-otp so we supersede it with one
+  // we know the value of. do_request_code invalidates the prior un-used
+  // OTP on every call, so this overrides the in-flight UI code.
+  const code = await fetchTestOTP(page, walkInPhone, key);
   await page.getByTestId("otp-input").fill(code);
   await page.getByTestId("otp-submit").click();
   await expect(page.getByTestId("walkin-card")).toBeVisible({ timeout: 15_000 });

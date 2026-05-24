@@ -3,8 +3,11 @@ import { test, expect, type Page } from "@playwright/test";
 import { signInAsStaff } from "./helpers";
 
 // J1 — a customer completes a manual booking through the UI.
-// J2 — the time picked on `/` is the time shown on `/admin` (the timezone
-//      regression: a 10:00 pick must not surface as 22:00).
+// J2 — the time picked on `/s/<slug>/book` is the time shown on `/admin`
+//      (the timezone regression: a 10:00 pick must not surface as 22:00).
+//
+// Phase 2 design refresh: `/` is now a hub, not a redirect, so the
+// flow lands on `/s/playdesk-flagship/book` directly here.
 
 /** Click date cells until the slot grid offers a bookable hour; return it. */
 async function pickFirstFreeSlot(page: Page): Promise<string> {
@@ -27,7 +30,7 @@ async function pickFirstFreeSlot(page: Page): Promise<string> {
 test("manual booking: pick a slot, confirm, and verify the time in admin", async ({ page }) => {
   const customer = `Playwright ${Date.now()}`;
 
-  await page.goto("/");
+  await page.goto("/s/playdesk-flagship/book");
   await expect(page.locator("button.pd-rcard").first()).toBeVisible();
 
   // Step 1 — first resource.

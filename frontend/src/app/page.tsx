@@ -1,30 +1,30 @@
-// Root `/` is now a server-side 302 redirect to the default store's
-// booking page (`/s/<slug>/book`). Why:
+// Root `/` is the PlayDesk customer-facing hub. Phase 2 retires the
+// v6-era 302 redirect to `/s/<default>/book` in favour of a real landing
+// with four explicit entries. See DESIGN_AUDIT.md §4 for the rationale.
 //
-//   1. v6 multi-location moves the booking flow under `/s/[slug]/book`
-//      so the URL carries the store context. Existing bookmarks /
-//      QR-card prints that still point at `/` must keep working — hence
-//      the redirect rather than a 404.
-//   2. The redirect target is fetched from `/api/public/default-store/`
-//      (not hardcoded) so a deployment that drops or renames its
-//      flagship store still resolves correctly without a frontend
-//      redeploy.
-//   3. Server-side `redirect()` from `next/navigation` (302, default)
-//      runs before any HTML ships, so direct navigation and crawlers
-//      both see the canonical store URL.
+// Four entries:
+//   1. Book now             → /s/<default>/book   (most prominent)
+//   2. My account           → /s/<default>/account
+//   3. Talk to front desk   → /chat
+//   4. Staff sign in        → /staff/login
 //
-// `dynamic = "force-dynamic"` keeps the lookup live — a brand new store
-// added in Django admin shows up as the default on the next request.
+// The default store's slug + brand are still fetched server-side from
+// `/api/public/default-store/` and `/api/public/store-brand/` so printed
+// QR cards or bookmarks pointing at `/` keep working — they just land on
+// a hub now instead of being redirected. The mobile layout stacks the
+// four entries vertically with Book as the visual lead; desktop falls
+// into a 2×2 grid.
 
-import { redirect } from "next/navigation";
+import Link from "next/link";
+
+import { Icon } from "@/components/pd-ui";
+import { fetchStoreBrand, type StoreBrand } from "@/lib/store-brand";
 
 export const dynamic = "force-dynamic";
 
 const FALLBACK_SLUG = "playdesk-flagship";
 
 function backendOrigin(): string {
-  // Server-only var (set by docker-compose). Matches the SSR-fetch pattern
-  // in `lib/store-brand.ts` and `app/qr/[slug]/page.tsx`.
   return process.env.BACKEND_ORIGIN ?? "http://127.0.0.1:8000";
 }
 
@@ -38,14 +38,94 @@ async function loadDefaultSlug(): Promise<string> {
     const body = (await resp.json()) as { slug: string | null };
     return typeof body.slug === "string" && body.slug ? body.slug : FALLBACK_SLUG;
   } catch {
-    // Backend unreachable — fall back to the well-known flagship slug
-    // rather than rendering a blank page. The fallback matches
-    // seed_data.py's flagship slug.
     return FALLBACK_SLUG;
   }
 }
 
-export default async function Page() {
+interface HubEntry {
+  href: string;
+  eyebrow: string;
+  title: string;
+  body: string;
+  primary?: boolean;
+}
+
+export default async function HubPage() {
   const slug = await loadDefaultSlug();
-  redirect(`/s/${slug}/book`);
+  const brand: StoreBrand = await fetchStoreBrand(slug);
+
+  const entries: HubEntry[] = [
+    {
+      href: `/s/${encodeURIComponent(slug)}/book`,
+      eyebrow: "Book a session",
+      title: "Book now",
+      body: "Pick a station, a date, and a time. Pay at the door or by Stripe.",
+      primary: true,
+    },
+    {
+      href: `/s/${encodeURIComponent(slug)}/account`,
+      eyebrow: "Loyalty + history",
+      title: "My account",
+      body: "Sign in with your phone to manage bookings and rewards.",
+    },
+    {
+      href: "/chat",
+      eyebrow: "AI front desk",
+      title: "Talk to front desk",
+      body: "Ask about availability, pricing, or game titles in plain language.",
+    },
+    {
+      href: "/staff/login",
+      eyebrow: "Staff only",
+      title: "Staff sign in",
+      body: "Open the admin dashboard. Requires a PlayDesk staff account.",
+    },
+  ];
+
+  const wrapperStyle: React.CSSProperties | undefined = brand.accent
+    ? ({ "--pd-accent": brand.accent, "--accent": brand.accent } as React.CSSProperties)
+    : undefined;
+
+  return (
+    <div className="pd-page pd-page--booking" style={wrapperStyle}>
+      <header className="pd-page-head">
+        <div className="pd-brand-logo">
+          {brand.logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="pd-brand-logo-img" src={brand.logo_url} alt={brand.name} />
+          ) : (
+            <span className="pd-brand-mark" aria-hidden>
+              <Icon.logo size={28} />
+            </span>
+          )}
+        </div>
+        <div className="pd-eyebrow">{brand.name}</div>
+        <h1 className="pd-page-title">
+          Welcome to
+          <br />
+          the front desk.
+        </h1>
+        <p className="pd-page-sub">
+          Game lounge bookings, loyalty, and a 24/7 AI host — pick where to land.
+        </p>
+      </header>
+
+      <section className="pd-hub" aria-label="Where to next">
+        {entries.map((e) => (
+          <Link
+            key={e.href}
+            className={`pd-hub-card ${e.primary ? "pd-hub-card--primary" : ""}`}
+            href={e.href}
+          >
+            <div className="pd-hub-card-eyebrow">{e.eyebrow}</div>
+            <div className="pd-hub-card-title">{e.title}</div>
+            <p className="pd-hub-card-body">{e.body}</p>
+            <span className="pd-hub-card-arrow" aria-hidden>
+              →
+            </span>
+          </Link>
+        ))}
+      </section>
+    </div>
+  );
 }

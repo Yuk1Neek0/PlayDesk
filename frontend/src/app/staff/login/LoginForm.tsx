@@ -6,8 +6,14 @@
 // sets the Django session cookie on success; we then push to `next`
 // (defaults to /admin) and let <StaffSessionProvider> re-validate via
 // /api/staff/me/ when the admin layout mounts.
+//
+// Phase 2 commit 4: ported from raw Tailwind to the pd-* design system so
+// the staff path matches the customer surfaces visually (DESIGN_AUDIT.md
+// §1b — "staff login is a different product").
 
 import { useState } from "react";
+
+import { Icon } from "@/components/pd-ui";
 
 interface LoginFormProps {
   /** URL to land on after a successful login. */
@@ -53,76 +59,84 @@ export default function LoginForm({ next }: LoginFormProps) {
     }
   }
 
+  const submitting = status === "submitting";
+
   return (
-    <div className="max-w-md mx-auto px-4 py-16">
-      <h1 className="text-3xl font-bold text-gray-900 mb-2">Staff sign-in</h1>
-      <p className="text-gray-500 mb-8">
-        Sign in with your PlayDesk staff account.
-      </p>
-
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white rounded-lg shadow p-6 space-y-4"
-      >
-        <div>
-          <label
-            htmlFor="username"
-            className="block text-sm font-medium text-gray-700 mb-1"
-          >
-            Username
-          </label>
-          <input
-            id="username"
-            name="username"
-            type="text"
-            autoComplete="username"
-            required
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2"
-          />
+    <div className="pd-page pd-page--booking">
+      <header className="pd-page-head">
+        <div className="pd-brand-logo">
+          <span className="pd-brand-mark" aria-hidden>
+            <Icon.logo size={28} />
+          </span>
         </div>
-
-        <div>
-          <label
-            htmlFor="password"
-            className="block text-sm font-medium text-gray-700 mb-1"
-          >
-            Password
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2"
-          />
-        </div>
-
-        {status === "error" && errorMsg && (
-          <div
-            role="alert"
-            className="text-sm text-red-600 border border-red-200 bg-red-50 rounded px-3 py-2"
-          >
-            {errorMsg}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          disabled={status === "submitting"}
-          className="w-full bg-gray-800 hover:bg-gray-700 disabled:bg-gray-400 text-white py-3 rounded-lg font-medium transition"
-        >
-          {status === "submitting" ? "Signing in…" : "Sign in"}
-        </button>
-
-        <p className="text-xs text-gray-400 text-center pt-2">
-          Forgot your password? Contact your administrator.
+        <div className="pd-eyebrow">Staff only</div>
+        <h1 className="pd-page-title">Staff sign-in</h1>
+        <p className="pd-page-sub">
+          Sign in with your PlayDesk staff account to open the admin
+          dashboard.
         </p>
-      </form>
+      </header>
+
+      <section className="pd-step is-active" style={{ maxWidth: 460 }}>
+        <div className="pd-step-body">
+          <form onSubmit={handleSubmit} className="pd-form">
+            <label className="pd-field" htmlFor="username">
+              <span className="pd-field-label">Username</span>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                autoComplete="username"
+                required
+                className="pd-input"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={submitting}
+              />
+            </label>
+
+            <label className="pd-field" htmlFor="password">
+              <span className="pd-field-label">Password</span>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                className="pd-input"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={submitting}
+              />
+            </label>
+
+            {status === "error" && errorMsg && (
+              <div className="pd-error" role="alert">
+                <span className="pd-error-dot" />
+                {errorMsg}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="pd-btn pd-btn--primary pd-btn--lg"
+              disabled={submitting || !username || !password}
+            >
+              {submitting ? (
+                <>
+                  <span className="pd-spinner" /> Signing in…
+                </>
+              ) : (
+                "Sign in"
+              )}
+            </button>
+
+            <p className="pd-fine">
+              Forgot your password? Contact your administrator.
+            </p>
+          </form>
+        </div>
+      </section>
     </div>
   );
 }

@@ -51,7 +51,8 @@ test("date strip starts on today (store timezone), regardless of viewer TZ", asy
   // offered it as a bookable date forever. The viewer is in Asia/Tokyo
   // per playwright.config.ts — the strip must still anchor on Toronto.
 
-  await page.goto("/");
+  // Phase 2 hub: `/` is no longer a redirect, navigate to booking directly.
+  await page.goto("/s/playdesk-flagship/book");
   // Pick any resource so step 2 (the strip) becomes interactive.
   await page.locator("button.pd-rcard").first().click();
   const first = page.locator("button.pd-date-cell").first();
@@ -96,7 +97,8 @@ test("a manual booking is visible to the AI front desk on the next turn", async 
   const customer = `Playwright AI ${Date.now()}`;
 
   // ---- Book via / ----
-  await page.goto("/");
+  // Phase 2 hub: `/` is no longer a redirect, navigate to booking directly.
+  await page.goto("/s/playdesk-flagship/book");
   await expect(page.locator("button.pd-rcard").first()).toBeVisible();
   await page.locator("button.pd-rcard").first().click();
   // Shortest duration so finding a slot is easy.

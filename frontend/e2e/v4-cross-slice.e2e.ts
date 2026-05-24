@@ -1,6 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
-import { signInAsStaff } from "./helpers";
+import { bookFirstFreeSlot, signInAsStaff } from "./helpers";
 
 // J5 — v4 cross-slice integration. Catches the class of bug where each
 // slice's own tests pass but the admin pages 5xx / show "Couldn't load …"
@@ -46,23 +46,6 @@ test("v4 admin pages render under Staff login (no 'Couldn't load' banners)", asy
   await expect(errorBanner).toHaveCount(0);
 });
 
-/** Walk the booking picker until a free slot is found; click it. */
-async function pickFirstFreeSlot(page: Page): Promise<string> {
-  const dates = page.locator("button.pd-date-cell");
-  const count = await dates.count();
-  for (let i = 0; i < count; i++) {
-    await dates.nth(i).click();
-    await page.waitForTimeout(2000);
-    const free = page.locator(".pd-slots-grid button.pd-slot:not([disabled])").first();
-    if ((await free.count()) > 0) {
-      const label = (await free.locator(".pd-slot-time").textContent())?.trim() ?? "";
-      await free.click();
-      return label;
-    }
-  }
-  return "";
-}
-
 test("customer detail page shows BOTH membership + outbound sections with real data", async ({
   page,
 }) => {
@@ -77,15 +60,10 @@ test("customer detail page shows BOTH membership + outbound sections with real d
   const customerName = `Playwright v4 ${Date.now()}`;
   const customerPhone = `+1 416 555 ${phoneSuffix}`;
 
-  await page.goto("/");
-  await page.locator("button.pd-rcard").first().click();
-  await page.locator("button.pd-seg-item").first().click();
-  const slot = await pickFirstFreeSlot(page);
-  expect(slot, "no free slot — availability is broken").not.toBe("");
-  await page.locator("input.pd-input").first().fill(customerName);
-  await page.locator("input.pd-input").nth(1).fill(customerPhone);
-  await page.getByRole("button", { name: /Confirm booking/ }).click();
-  await expect(page.getByRole("heading", { name: /See you at PlayDesk/ })).toBeVisible();
+  // Phase 2 hub: `/` is no longer a redirect, navigate to booking directly.
+  await page.goto("/s/playdesk-flagship/book");
+  // Helper handles resource + duration + slot picking, with 409 retries.
+  await bookFirstFreeSlot(page, customerName, customerPhone);
 
   // Sign in as staff and use the search box (more reliable than scanning
   // rows in a paginated list that may contain hundreds of test customers).

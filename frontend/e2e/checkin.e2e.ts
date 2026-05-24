@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { bookFirstFreeSlot, csrfHeaders, signInAsStaff, signInAsStaffAPI } from "./helpers";
+
 // v10b checkin — end-to-end coverage for the per-booking check-in flow.
 //
 // The flow:
@@ -18,34 +20,10 @@ import { test, expect, type Page } from "@playwright/test";
 
 const BACKEND_URL = process.env.PLAYDESK_BACKEND ?? "http://localhost:8000";
 
-/** Click date cells until the slot grid offers a bookable hour; return it. */
-async function pickFirstFreeSlot(page: Page): Promise<string> {
-  const dates = page.locator("button.pd-date-cell");
-  const count = await dates.count();
-  for (let i = 0; i < count; i++) {
-    await dates.nth(i).click();
-    await page.waitForTimeout(2000);
-    const free = page.locator(".pd-slots-grid button.pd-slot:not([disabled])").first();
-    if ((await free.count()) > 0) {
-      const label = (await free.locator(".pd-slot-time").textContent())?.trim() ?? "";
-      await free.click();
-      return label;
-    }
-  }
-  return "";
-}
-
 async function bookOne(page: Page, customer: string, phone: string): Promise<string> {
-  await page.goto("/");
-  await expect(page.locator("button.pd-rcard").first()).toBeVisible();
-  await page.locator("button.pd-rcard").first().click();
-  await page.locator("button.pd-seg-item").first().click();
-  const slot = await pickFirstFreeSlot(page);
-  expect(slot, "no free slot — availability is broken").not.toBe("");
-  await page.locator("input.pd-input").first().fill(customer);
-  await page.locator("input.pd-input").nth(1).fill(phone);
-  await page.getByRole("button", { name: /Confirm booking/ }).click();
-  await expect(page.getByRole("heading", { name: /See you at PlayDesk/ })).toBeVisible();
+  // Phase 2 hub: `/` is no longer a redirect, navigate to booking directly.
+  await page.goto("/s/playdesk-flagship/book");
+  const { slot } = await bookFirstFreeSlot(page, customer, phone);
   return slot;
 }
 
@@ -57,15 +35,35 @@ interface BookingRow {
 }
 
 async function findBookingByName(page: Page, name: string): Promise<BookingRow> {
-  // Pull the admin list directly. The admin endpoint is open in the
-  // absence of v10a's StaffOnlyMiddleware, which is what the integrity
-  // tests assume.
+  // Pull the admin list directly. v10a StaffOnlyMiddleware gates /api/admin/*
+  // so we need a Django session cookie first; signInAsStaffAPI sets it on
+  // page.context without the cost of a UI navigation.
+  await signInAsStaffAPI(page);
   const resp = await page.request.get(`${BACKEND_URL}/api/admin/bookings/`);
   expect(resp.status()).toBe(200);
   const body = (await resp.json()) as { results: BookingRow[] };
   const row = body.results.find((b) => b.customer_name === name);
   expect(row, `no admin booking row matched customer name ${name}`).toBeDefined();
   return row!;
+}
+
+/**
+ * Flip a freshly-created booking from its default ``pending`` status to
+ * ``confirmed`` via the admin PATCH endpoint. Necessary because every
+ * downstream check-in surface (customer ``/c/<token>`` button + admin
+ * row's "Check in" button) renders only for CONFIRMED bookings, but the
+ * public booking-create returns ``pending`` and the no-deposit branch in
+ * ``_maybe_open_deposit`` doesn't upgrade it.
+ */
+async function confirmBooking(page: Page, bookingId: number): Promise<void> {
+  const resp = await page.request.patch(
+    `${BACKEND_URL}/api/bookings/${bookingId}/`,
+    {
+      data: { status: "confirmed" },
+      headers: await csrfHeaders(page.context()),
+    },
+  );
+  expect(resp.status(), `confirm patch failed: ${await resp.text()}`).toBeLessThan(300);
 }
 
 test("customer check-in happy path: book, tap /c/<token>, see welcome, admin badge flips", async ({
@@ -78,6 +76,9 @@ test("customer check-in happy path: book, tap /c/<token>, see welcome, admin bad
   expect(row.check_in_token).toBeTruthy();
   expect(row.check_in_token!.length).toBe(8);
 
+  // Flip pending → confirmed so the customer-facing check-in button renders.
+  await confirmBooking(page, row.id);
+
   await page.goto(`/c/${row.check_in_token}`);
   await expect(page.getByTestId("checkin-card")).toBeVisible();
   await expect(page.getByTestId("checkin-button")).toBeVisible();
@@ -86,10 +87,9 @@ test("customer check-in happy path: book, tap /c/<token>, see welcome, admin bad
   await expect(page.getByTestId("checkin-message")).toContainText(/Already checked in/);
 
   // Verify the admin badge — sign in, find the row, look for the green
-  // checked-in dot in its Check-in cell.
-  await page.goto("/login");
-  await page.getByRole("button", { name: /Staff/ }).click();
-  await expect(page).toHaveURL(/\/admin/);
+  // checked-in dot in its Check-in cell. v10a replaced the one-click /login
+  // demo button with real /staff/login form auth (see helpers.ts).
+  await signInAsStaff(page);
   const adminRow = page.locator(".pd-tr", { hasText: customer }).first();
   await expect(adminRow).toBeVisible({ timeout: 25_000 });
   await expect(adminRow.getByTestId("checkin-badge")).toBeVisible();
@@ -101,6 +101,7 @@ test("re-tap on /c/<token> after check-in is idempotent: same payload, no error"
   const customer = `Checkin Idempotent ${Date.now()}`;
   await bookOne(page, customer, "+1 416 555 0702");
   const row = await findBookingByName(page, customer);
+  await confirmBooking(page, row.id);
 
   // First tap.
   await page.goto(`/c/${row.check_in_token}`);
@@ -121,10 +122,15 @@ test("cancelled booking on /c/<token> shows the cancelled message, no button", a
   await bookOne(page, customer, "+1 416 555 0703");
   const row = await findBookingByName(page, customer);
 
-  // Cancel via the admin PATCH endpoint.
+  // Cancel via the admin PATCH endpoint. findBookingByName above logged
+  // page.request in as staff (so the StoreOnlyMiddleware lets us through);
+  // DRF SessionAuth then enforces CSRF, mirrored from the cookie.
   const cancelResp = await page.request.patch(
     `${BACKEND_URL}/api/bookings/${row.id}/`,
-    { data: { status: "cancelled" } },
+    {
+      data: { status: "cancelled" },
+      headers: await csrfHeaders(page.context()),
+    },
   );
   expect(cancelResp.status()).toBeLessThan(300);
 
@@ -136,11 +142,15 @@ test("cancelled booking on /c/<token> shows the cancelled message, no button", a
 test("admin manual check-in for a walk-in flips the badge", async ({ page }) => {
   const customer = `Checkin Walkin ${Date.now()}`;
   await bookOne(page, customer, "+1 416 555 0704");
+  const row = await findBookingByName(page, customer);
 
-  // Sign in to admin.
-  await page.goto("/login");
-  await page.getByRole("button", { name: /Staff/ }).click();
-  await expect(page).toHaveURL(/\/admin/);
+  // bookOne lands the row at status="pending" (per BookingStatus default
+  // + v9 no-deposit path). The manual-checkin button is gated on
+  // status==="confirmed", so flip it here before driving the UI.
+  await confirmBooking(page, row.id);
+
+  // Sign in to admin via the real /staff/login form (v10a).
+  await signInAsStaff(page);
 
   const adminRow = page.locator(".pd-tr", { hasText: customer }).first();
   await expect(adminRow).toBeVisible({ timeout: 25_000 });
