@@ -214,6 +214,8 @@ body {
 
 /* —————— PAGE / STEP —————— */
 .pd-page-head { padding: 24px 0 28px; animation: pd-fade-up 420ms var(--ease) both; }
+.pd-brand-logo { display: inline-flex; align-items: center; margin-bottom: 16px; }
+.pd-brand-logo-img { max-height: 48px; width: auto; display: block; }
 .pd-page-title {
   font-family: var(--font-display); font-weight: 700;
   font-size: var(--fs-display);

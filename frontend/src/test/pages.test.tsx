@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-import BookingPage from "@/app/page";
+// BookingPage is the interactive client component; `app/page.tsx` is a thin
+// server entry that SSR-fetches branding and forwards it as a prop. Tests
+// exercise the client component directly with a stub brand.
+import BookingPage from "@/app/BookingPage";
 import ChatPage from "@/app/chat/page";
 import AdminPage from "@/app/admin/page";
+
+const DEFAULT_BRAND = { name: "PlayDesk", logo_url: null, accent: null };
 
 // AdminPage is gated to the staff role — render it as a signed-in staff user.
 vi.mock("@/lib/auth", () => ({
@@ -66,13 +71,13 @@ describe("BookingPage", () => {
   });
 
   it("renders the page heading", async () => {
-    render(<BookingPage />);
+    render(<BookingPage brand={DEFAULT_BRAND} />);
     expect(screen.getByText(/Pick your station/i)).toBeTruthy();
     await screen.findByText("PS5 Station · A");
   });
 
   it("renders the four step titles", async () => {
-    render(<BookingPage />);
+    render(<BookingPage brand={DEFAULT_BRAND} />);
     expect(screen.getByText("Choose a resource")).toBeTruthy();
     expect(screen.getByText("Pick a date")).toBeTruthy();
     expect(screen.getByText("Choose a time")).toBeTruthy();
@@ -81,7 +86,7 @@ describe("BookingPage", () => {
   });
 
   it("renders resource cards loaded from the API", async () => {
-    render(<BookingPage />);
+    render(<BookingPage brand={DEFAULT_BRAND} />);
     expect(await screen.findByText("PS5 Station · A")).toBeTruthy();
     expect(await screen.findByText("Switch Station")).toBeTruthy();
   });
