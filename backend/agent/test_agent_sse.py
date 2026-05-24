@@ -69,11 +69,13 @@ def conversation(transactional_db):
     # background thread with its own DB connection, so the conversation must
     # be committed — not held in an uncommitted test transaction — to be
     # visible to that thread.
-    from core.models import Conversation, ConversationStatus
+    from core.models import Conversation, ConversationStatus, Store
 
+    store = Store.objects.create(name="SSE Test Store", timezone="UTC", business_hours={})
     return Conversation.objects.create(
         customer_identifier="sse-test-user",
         status=ConversationStatus.ACTIVE,
+        store=store,
     )
 
 
@@ -83,6 +85,14 @@ def conversation(transactional_db):
 
 
 class TestCreateConversation:
+    @pytest.fixture(autouse=True)
+    def _seed_store(self, db):
+        from core.models import Store
+
+        Store.objects.get_or_create(
+            name="Default Store", defaults={"timezone": "UTC", "business_hours": {}}
+        )
+
     def test_creates_conversation(self, client, db):
         response = client.post(
             "/api/conversations/",

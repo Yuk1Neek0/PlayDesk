@@ -25,10 +25,21 @@ function backendOrigin(): string {
   return process.env.BACKEND_ORIGIN ?? "http://127.0.0.1:8000";
 }
 
-export async function fetchStoreBrand(): Promise<StoreBrand> {
+/**
+ * Fetch the public store-brand payload.
+ *
+ * @param slug Optional store slug. When set, hits
+ *   `/api/public/store-brand/?store=<slug>` so the URL store's brand
+ *   surfaces regardless of cookie / header state. When omitted, the URL
+ *   stays bare and the backend resolves the default store via
+ *   `CurrentStoreMiddleware`'s alphabetically-first fallback — matching
+ *   the v5 single-store behaviour for unchanged callers.
+ */
+export async function fetchStoreBrand(slug?: string): Promise<StoreBrand> {
   const origin = backendOrigin();
+  const query = slug ? `?store=${encodeURIComponent(slug)}` : "";
   try {
-    const resp = await fetch(`${origin}/api/public/store-brand/`, {
+    const resp = await fetch(`${origin}/api/public/store-brand/${query}`, {
       // `cache: "no-store"` so an admin updating Store.brand sees the change
       // on the very next request. Next.js's Data Cache would otherwise hold
       // the response for the duration of the dev session, which broke the

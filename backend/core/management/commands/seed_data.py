@@ -3,27 +3,25 @@ Management command: seed_data
 
 Idempotent seed for stores, resources, and game-menu items.
 Safe to run multiple times — uses get_or_create / update_or_create.
+
+v6 multi-location (epic #157, task #163): seeds TWO stores —
+"PlayDesk Flagship" (slug ``playdesk-flagship``) and
+"PlayDesk North · Toronto" (slug ``playdesk-north``) — so the
+multi-store admin switcher + customer URL prefix have something
+real to demonstrate. Existing flagship data is unchanged; the
+North store gets a slimmer set of resources (2 PS5 stations + 1
+private room) and the default 4 QR actions.
 """
 
 from django.core.management.base import BaseCommand
 
 from core.models import GameMenu, QRAction, Resource, Store
 
-STORE_DATA = {
-    "name": "PlayDesk Flagship",
-    "timezone": "America/Toronto",
-    "business_hours": {
-        "mon": {"open": "10:00", "close": "22:00"},
-        "tue": {"open": "10:00", "close": "22:00"},
-        "wed": {"open": "10:00", "close": "22:00"},
-        "thu": {"open": "10:00", "close": "22:00"},
-        "fri": {"open": "10:00", "close": "23:00"},
-        "sat": {"open": "09:00", "close": "23:00"},
-        "sun": {"open": "09:00", "close": "22:00"},
-    },
-}
+# Each entry: (lookup-name, defaults, resources, qr_actions, game_menu).
+# The slug is set explicitly so URL paths (`/s/<slug>/book`, `/qr/<slug>`)
+# stay stable across slugify-grammar changes between Django versions.
 
-RESOURCE_DATA = [
+FLAGSHIP_RESOURCE_DATA = [
     {
         "type": "console",
         "name": "PS5 Station 1",
@@ -61,8 +59,66 @@ RESOURCE_DATA = [
     },
 ]
 
-QR_ACTION_DATA = [
-    # Highest-value action (review) leads, then social follows, then WiFi.
+FLAGSHIP_GAME_MENU_DATA = {
+    "PS5 Station 1": [
+        {"name": "FIFA 25", "platform": "PS5", "max_players": 4},
+        {"name": "NBA 2K25", "platform": "PS5", "max_players": 4},
+        {"name": "Call of Duty: Black Ops 6", "platform": "PS5", "max_players": 4},
+    ],
+    "PS5 Station 2": [
+        {"name": "Gran Turismo 7", "platform": "PS5", "max_players": 2},
+        {"name": "Mortal Kombat 1", "platform": "PS5", "max_players": 2},
+    ],
+    "Nintendo Switch Station": [
+        {"name": "Mario Kart 8 Deluxe", "platform": "Switch", "max_players": 4},
+        {"name": "Super Smash Bros. Ultimate", "platform": "Switch", "max_players": 4},
+        {"name": "Splatoon 3", "platform": "Switch", "max_players": 4},
+    ],
+}
+
+# North store — distinct name prefix so the admin switcher chips are
+# visually distinguishable, and resources renamed (no name collisions
+# under the unique-by-(store, name) Resource constraint anyway, but the
+# distinct labels make cross-store e2e assertions easier).
+NORTH_RESOURCE_DATA = [
+    {
+        "type": "console",
+        "name": "North PS5 Station 1",
+        "capacity": 4,
+        "price_per_hour": "55.00",
+        "metadata": {"controllers": 4, "display": "55-inch 4K OLED"},
+    },
+    {
+        "type": "console",
+        "name": "North PS5 Station 2",
+        "capacity": 4,
+        "price_per_hour": "55.00",
+        "metadata": {"controllers": 4, "display": "55-inch 4K OLED"},
+    },
+    {
+        "type": "room",
+        "name": "North Private Room",
+        "capacity": 6,
+        "price_per_hour": "110.00",
+        "metadata": {"consoles": ["PS5"], "display": "65-inch 4K"},
+    },
+]
+
+NORTH_GAME_MENU_DATA = {
+    "North PS5 Station 1": [
+        {"name": "FIFA 25", "platform": "PS5", "max_players": 4},
+        {"name": "EA Sports FC 25", "platform": "PS5", "max_players": 4},
+    ],
+    "North PS5 Station 2": [
+        {"name": "Gran Turismo 7", "platform": "PS5", "max_players": 2},
+    ],
+}
+
+# Default QR action set — both stores seed the same shape so the
+# /qr/<slug> landing page renders the canonical 4 chips on either
+# location. The (store, kind) uniqueness in `QRAction.objects.update_or_create`
+# below keeps the seed idempotent per-store.
+DEFAULT_QR_ACTION_DATA = [
     {
         "kind": "review",
         "label": "Leave a Google review",
@@ -93,40 +149,68 @@ QR_ACTION_DATA = [
     },
 ]
 
-
-GAME_MENU_DATA = {
-    "PS5 Station 1": [
-        {"name": "FIFA 25", "platform": "PS5", "max_players": 4},
-        {"name": "NBA 2K25", "platform": "PS5", "max_players": 4},
-        {"name": "Call of Duty: Black Ops 6", "platform": "PS5", "max_players": 4},
-    ],
-    "PS5 Station 2": [
-        {"name": "Gran Turismo 7", "platform": "PS5", "max_players": 2},
-        {"name": "Mortal Kombat 1", "platform": "PS5", "max_players": 2},
-    ],
-    "Nintendo Switch Station": [
-        {"name": "Mario Kart 8 Deluxe", "platform": "Switch", "max_players": 4},
-        {"name": "Super Smash Bros. Ultimate", "platform": "Switch", "max_players": 4},
-        {"name": "Splatoon 3", "platform": "Switch", "max_players": 4},
-    ],
-}
+STORES_TO_SEED = [
+    {
+        "name": "PlayDesk Flagship",
+        "slug": "playdesk-flagship",
+        "timezone": "America/Toronto",
+        "business_hours": {
+            "mon": {"open": "10:00", "close": "22:00"},
+            "tue": {"open": "10:00", "close": "22:00"},
+            "wed": {"open": "10:00", "close": "22:00"},
+            "thu": {"open": "10:00", "close": "22:00"},
+            "fri": {"open": "10:00", "close": "23:00"},
+            "sat": {"open": "09:00", "close": "23:00"},
+            "sun": {"open": "09:00", "close": "22:00"},
+        },
+        "resources": FLAGSHIP_RESOURCE_DATA,
+        "game_menu": FLAGSHIP_GAME_MENU_DATA,
+        "qr_actions": DEFAULT_QR_ACTION_DATA,
+    },
+    {
+        "name": "PlayDesk North · Toronto",
+        "slug": "playdesk-north",
+        "timezone": "America/Toronto",
+        "business_hours": {
+            "mon": {"open": "11:00", "close": "22:00"},
+            "tue": {"open": "11:00", "close": "22:00"},
+            "wed": {"open": "11:00", "close": "22:00"},
+            "thu": {"open": "11:00", "close": "22:00"},
+            "fri": {"open": "11:00", "close": "23:00"},
+            "sat": {"open": "10:00", "close": "23:00"},
+            "sun": {"open": "10:00", "close": "21:00"},
+        },
+        "resources": NORTH_RESOURCE_DATA,
+        "game_menu": NORTH_GAME_MENU_DATA,
+        "qr_actions": DEFAULT_QR_ACTION_DATA,
+    },
+]
 
 
 class Command(BaseCommand):
-    help = "Idempotently seed store, resource, and game-menu data."
+    help = "Idempotently seed stores, resources, game menus, and QR actions."
 
     def handle(self, *args, **options) -> None:
+        for store_data in STORES_TO_SEED:
+            self._seed_store(store_data)
+        self.stdout.write(self.style.SUCCESS("Seed complete."))
+
+    def _seed_store(self, data: dict) -> None:
+        # update_or_create on the explicit slug — slug is unique, so this is
+        # the safest idempotency key. The name is kept in `defaults` so a
+        # display-name change in this file lands on re-run.
         store, created = Store.objects.update_or_create(
-            name=STORE_DATA["name"],
+            slug=data["slug"],
             defaults={
-                "timezone": STORE_DATA["timezone"],
-                "business_hours": STORE_DATA["business_hours"],
+                "name": data["name"],
+                "timezone": data["timezone"],
+                "business_hours": data["business_hours"],
             },
         )
         self.stdout.write(f"Store: {'created' if created else 'updated'} — {store.name}")
 
-        for res_data in RESOURCE_DATA:
-            resource, created = Resource.objects.update_or_create(
+        for res_data in data["resources"]:
+            resource, r_created = Resource.objects.update_or_create(
                 store=store,
                 name=res_data["name"],
                 defaults={
@@ -137,10 +221,10 @@ class Command(BaseCommand):
                 },
             )
             self.stdout.write(
-                f"  Resource: {'created' if created else 'updated'} — {resource.name}"
+                f"  Resource: {'created' if r_created else 'updated'} — {resource.name}"
             )
 
-            for game_data in GAME_MENU_DATA.get(resource.name, []):
+            for game_data in data["game_menu"].get(resource.name, []):
                 game, g_created = GameMenu.objects.update_or_create(
                     resource=resource,
                     name=game_data["name"],
@@ -156,7 +240,7 @@ class Command(BaseCommand):
         # QR actions — idempotent on (store, kind), so re-running the seed
         # never duplicates the chip set. Position is taken from the seed
         # data to keep the configured order stable.
-        for qr in QR_ACTION_DATA:
+        for qr in data["qr_actions"]:
             action, qr_created = QRAction.objects.update_or_create(
                 store=store,
                 kind=qr["kind"],
@@ -171,5 +255,3 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"  QR action: {'created' if qr_created else 'updated'} — {action.label}"
             )
-
-        self.stdout.write(self.style.SUCCESS("Seed complete."))

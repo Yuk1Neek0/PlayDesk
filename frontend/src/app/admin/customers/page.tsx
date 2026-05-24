@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtDate, relTime } from "@/components/pd-ui";
 import { adminListCustomers, type CustomerSummary } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCurrentStore } from "@/lib/store-context";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -34,6 +35,11 @@ export default function AdminCustomersPage() {
   useEffect(() => {
     if (authReady && user?.role !== "staff") router.replace("/login");
   }, [authReady, user, router]);
+
+  // v6 multi-location: refetch the customer list when the admin switches
+  // store so we don't display rows scoped to the previous store.
+  const { current } = useCurrentStore();
+  const storeSlug = current?.slug ?? null;
 
   // Debounce the search input.
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -64,7 +70,7 @@ export default function AdminCustomersPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQ, page]);
+  }, [debouncedQ, page, storeSlug]);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(state.count / 20)), [state.count]);
 

@@ -24,6 +24,16 @@ def _allow_post_url() -> str:
     return f"http://testserver{WEBHOOK_URL}"
 
 
+@pytest.fixture(autouse=True)
+def _seed_store(db):
+    """Ensure a Store exists so Conversation.save's fallback resolves."""
+    from core.models import Store
+
+    Store.objects.get_or_create(
+        name="Default Store", defaults={"timezone": "UTC", "business_hours": {}}
+    )
+
+
 @pytest.mark.django_db(transaction=True)
 def test_returns_503_when_token_unset(client, settings):
     settings.TWILIO_AUTH_TOKEN = ""

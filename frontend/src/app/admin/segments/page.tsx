@@ -21,6 +21,7 @@ import {
   type Segment,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCurrentStore } from "@/lib/store-context";
 
 interface Row extends Segment {
   match_count: number | null;
@@ -61,9 +62,19 @@ export default function AdminSegmentsPage() {
     }
   }, []);
 
-  // Bootstrap the store id from the first resource (same pattern as /admin/qr).
+  // v6 multi-location: prefer the active store from <StoreProvider>;
+  // fall back to deriving from the first resource for single-store deployments.
+  const { current } = useCurrentStore();
+  const currentStoreId = current?.id ?? null;
+
   useEffect(() => {
     let cancelled = false;
+    if (currentStoreId !== null) {
+      setStoreId(currentStoreId);
+      return () => {
+        cancelled = true;
+      };
+    }
     listResources()
       .then((page) => {
         if (cancelled) return;
@@ -84,7 +95,7 @@ export default function AdminSegmentsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentStoreId]);
 
   useEffect(() => {
     if (storeId === null) return;

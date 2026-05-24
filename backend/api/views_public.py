@@ -29,17 +29,29 @@ def _validated_accent(raw: object) -> str | None:
 
 
 class StoreBrandView(APIView):
-    """GET /api/public/store-brand/ — default store's branding fields.
+    """GET /api/public/store-brand/ — current store's branding fields.
 
-    Single-store assumption: returns ``Store.objects.first()`` (matches the
-    project's existing convention; multi-location URL routing is v6).
+    Resolution order for which store to brand:
+      1. ``?store=<slug>`` query param (explicit caller intent — the new
+         ``/s/[slug]/book`` SSR loader uses this so the URL store's brand
+         renders regardless of cookie state).
+      2. ``request.store`` (the ``CurrentStoreMiddleware`` chain — header,
+         cookie, or alphabetically-first fallback).
+
+    The fallback preserves the legacy single-store behaviour for callers
+    without a slug context.
     """
 
     authentication_classes: list = []
     permission_classes: list = []
 
     def get(self, request):
-        store = Store.objects.first()
+        slug = request.GET.get("store")
+        store = None
+        if slug:
+            store = Store.objects.filter(slug=slug).first()
+        if store is None:
+            store = request.store
         if store is None:
             payload = {"name": "PlayDesk", "logo_url": None, "accent": None}
         else:
@@ -50,6 +62,30 @@ class StoreBrandView(APIView):
                 "logo_url": logo_url if isinstance(logo_url, str) and logo_url else None,
                 "accent": _validated_accent(brand.get("accent")),
             }
+        resp = Response(payload, status=status.HTTP_200_OK)
+        resp["Cache-Control"] = "public, max-age=60"
+        return resp
+
+
+class DefaultStoreView(APIView):
+    """GET /api/public/default-store/ — slug of the default store.
+
+    Returns ``{"slug": <slug>}`` for the alphabetically-first ``Store``
+    (matches ``CurrentStoreMiddleware``'s fallback). Powers the root-page
+    302 redirect to ``/s/<default>/book`` so a multi-store deployment that
+    later drops its flagship still resolves the default correctly without
+    a frontend redeploy.
+
+    Empty-deployment safety: returns ``{"slug": null}`` when no stores
+    exist. The caller renders a sensible fallback rather than 5xxing.
+    """
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request):
+        store = Store.objects.order_by("slug").first()
+        payload = {"slug": store.slug if store is not None else None}
         resp = Response(payload, status=status.HTTP_200_OK)
         resp["Cache-Control"] = "public, max-age=60"
         return resp

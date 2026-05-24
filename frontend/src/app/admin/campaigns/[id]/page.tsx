@@ -22,6 +22,7 @@ import {
   type CampaignStatus,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCurrentStore } from "@/lib/store-context";
 
 const PAGE_SIZE = 50;
 
@@ -66,6 +67,11 @@ export default function CampaignDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  // v6 multi-location: refetch when the admin switches store. A campaign
+  // from a different store will 404 (handled by the existing error state).
+  const { current } = useCurrentStore();
+  const storeSlug = current?.slug ?? null;
+
   const refresh = useCallback(async () => {
     if (!Number.isFinite(campaignId)) return;
     setLoading(true);
@@ -87,7 +93,9 @@ export default function CampaignDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [campaignId, page, statusFilter]);
+    // storeSlug included so a store switch triggers refetch with the new scope.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignId, page, statusFilter, storeSlug]);
 
   useEffect(() => {
     void refresh();

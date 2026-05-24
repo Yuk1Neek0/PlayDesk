@@ -145,13 +145,15 @@ def check_availability(inp: CheckAvailabilityInput) -> CheckAvailabilityOutput:
 
         from core.models import Resource
 
-        # Resources of the right type with sufficient capacity.
-        candidates = list(
-            Resource.objects.filter(
-                type=inp.resource_type,
-                capacity__gte=inp.party_size,
-            ).select_related("store")
-        )
+        # Resources of the right type with sufficient capacity, scoped to
+        # the conversation's store when provided.
+        candidates_qs = Resource.objects.filter(
+            type=inp.resource_type,
+            capacity__gte=inp.party_size,
+        ).select_related("store")
+        if inp.store_id is not None:
+            candidates_qs = candidates_qs.filter(store_id=inp.store_id)
+        candidates = list(candidates_qs)
 
         # The schema documents time_range as store-local time. Build the
         # requested window in the store's timezone so it compares correctly
@@ -248,6 +250,8 @@ def get_resource_details(inp: GetResourceDetailsInput) -> GetResourceDetailsOutp
         qs = Resource.objects.prefetch_related("game_menu").select_related("store")
         if inp.resource_type is not None:
             qs = qs.filter(type=inp.resource_type)
+        if inp.store_id is not None:
+            qs = qs.filter(store_id=inp.store_id)
 
         resources = []
         for r in qs:
@@ -306,6 +310,18 @@ def create_booking(inp: CreateBookingInput) -> CreateBookingOutput:
     try:
         resource = Resource.objects.get(pk=inp.resource_id)
     except Resource.DoesNotExist:
+        return CreateBookingOutput(
+            result=BookingConflictError(
+                message=f"Resource {inp.resource_id} not found.",
+                conflicting_start=inp.start_time,
+                conflicting_end=inp.start_time,
+            )
+        )
+
+    # Refuse to book a resource that belongs to a different store than the
+    # conversation. Treated as a not-found-style error to avoid leaking
+    # other stores' resource ids via the message text.
+    if inp.store_id is not None and resource.store_id != inp.store_id:
         return CreateBookingOutput(
             result=BookingConflictError(
                 message=f"Resource {inp.resource_id} not found.",
@@ -429,8 +445,19 @@ def modify_booking(inp: ModifyBookingInput) -> ModifyBookingOutput:
     from core.models import Booking, BookingStatus
 
     try:
-        booking = Booking.objects.get(pk=inp.booking_id)
+        booking = Booking.objects.select_related("resource").get(pk=inp.booking_id)
     except Booking.DoesNotExist:
+        return ModifyBookingOutput(
+            success=False,
+            booking_id=inp.booking_id,
+            new_start_time=inp.new_start_time,
+            new_end_time=inp.new_start_time,
+            message=f"Booking {inp.booking_id} not found.",
+        )
+
+    # Cross-store isolation: a conversation on store A can't touch store B's
+    # bookings. Report as not-found to avoid leaking the booking's existence.
+    if inp.store_id is not None and booking.resource.store_id != inp.store_id:
         return ModifyBookingOutput(
             success=False,
             booking_id=inp.booking_id,
@@ -499,8 +526,17 @@ def cancel_booking(inp: CancelBookingInput) -> CancelBookingOutput:
     from core.models import Booking, BookingStatus
 
     try:
-        booking = Booking.objects.get(pk=inp.booking_id)
+        booking = Booking.objects.select_related("resource").get(pk=inp.booking_id)
     except Booking.DoesNotExist:
+        return CancelBookingOutput(
+            success=False,
+            booking_id=inp.booking_id,
+            message=f"Booking {inp.booking_id} not found.",
+        )
+
+    # Cross-store isolation: don't let a conversation cancel another store's
+    # booking. Report not-found to avoid leaking existence.
+    if inp.store_id is not None and booking.resource.store_id != inp.store_id:
         return CancelBookingOutput(
             success=False,
             booking_id=inp.booking_id,

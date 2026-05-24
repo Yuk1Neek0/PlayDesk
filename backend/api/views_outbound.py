@@ -65,6 +65,9 @@ class OutboundMessageListView(ListAPIView):
         limit = max(1, min(limit, 200))
 
         qs = OutboundMessage.objects.select_related("customer", "customer__store")
+        # Scope to the operator's current store via the customer FK chain.
+        if self.request.store is not None:
+            qs = qs.filter(customer__store=self.request.store)
         if customer_id:
             qs = qs.filter(customer_id=customer_id)
         if status_filter:

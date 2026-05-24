@@ -40,8 +40,24 @@ from agent.channels.twilio_sms import TwilioSmsAdapter
 from agent.channels.twilio_whatsapp import TwilioWhatsAppAdapter
 from agent.llm_client import AnthropicClient
 from agent.loop import AgentLoop
-from core.models import Conversation
+from core.models import Conversation, Customer
 from core.phone import normalize_phone
+
+
+def _resolve_inbound_store(request: HttpRequest, raw_identifier: str):
+    """Return the Store an inbound webhook should attach to a Conversation.
+
+    Looks up the customer by normalised phone first (so a known customer's
+    inbound message lands on THEIR store regardless of the request headers),
+    then falls back to ``request.store`` which the middleware resolves from
+    header / cookie / alphabetically-first store.
+    """
+    normalised = normalize_phone(raw_identifier) if raw_identifier else None
+    if normalised:
+        customer = Customer.objects.filter(phone=normalised).select_related("store").first()
+        if customer is not None:
+            return customer.store
+    return request.store
 
 
 def _signature_ok(request: HttpRequest, auth_token: str) -> bool:
@@ -86,10 +102,11 @@ def twilio_sms_webhook(request: HttpRequest) -> HttpResponse:
     # Find-or-create the conversation by (channel, customer_identifier).
     # SMS conversations are one-per-customer so the agent can hold a
     # multi-turn thread without a session id.
+    store = _resolve_inbound_store(request, inbound.customer_identifier)
     conv, _ = Conversation.objects.get_or_create(
         customer_identifier=inbound.customer_identifier,
         channel="sms",
-        defaults={},
+        defaults={"store": store},
     )
 
     # Run the agent loop synchronously and collect the final reply text.
@@ -142,10 +159,11 @@ def twilio_whatsapp_webhook(request: HttpRequest) -> HttpResponse:
     # One conversation per (channel, customer_identifier). The WhatsApp
     # `customer_identifier` is the bare E.164 the adapter produced after
     # stripping the `whatsapp:` prefix — same shape as SMS.
+    store = _resolve_inbound_store(request, inbound.customer_identifier)
     conv, _ = Conversation.objects.get_or_create(
         customer_identifier=inbound.customer_identifier,
         channel="whatsapp",
-        defaults={},
+        defaults={"store": store},
     )
 
     loop = AgentLoop(
@@ -216,15 +234,10 @@ def twilio_voice_webhook(request: HttpRequest) -> HttpResponse:
     normalised = normalize_phone(raw_from) or raw_from
 
     # Best-effort Customer lookup so the side-effect of recording a phone
-    # row also surfaces existing customer context downstream. We don't
-    # store the FK directly (Conversation has no ``customer`` field in v5)
-    # — the customer is resolved at read-time via ``customer_identifier``,
-    # which already matches the retention slice's E.164 normalisation.
-    # Looking up here keeps the linkage explicit and reserves the spot for
-    # a future migration that adds the FK without changing this view.
-    from core.models import Customer
-
-    Customer.objects.filter(phone=normalised).first()
+    # row also surfaces existing customer context downstream. We use the
+    # match (if any) to pick the store for the Conversation row; otherwise
+    # the resolver-supplied request.store.
+    store = _resolve_inbound_store(request, normalised)
 
     # NOTE: ``status='completed'`` is intentional and not (yet) in
     # ``ConversationStatus.choices``. The PRD requires this exact value
@@ -236,6 +249,7 @@ def twilio_voice_webhook(request: HttpRequest) -> HttpResponse:
         channel="phone",
         customer_identifier=normalised,
         status="completed",
+        store=store,
     )
 
     return HttpResponse(_VOICE_GREETING_TWIML, content_type="application/xml")
@@ -289,10 +303,12 @@ def twilio_voice_status_callback(request: HttpRequest) -> HttpResponse:
     # are written via ``save()`` which doesn't enforce TextChoices.
     # Distinguishing answered vs. missed at read-time is the whole point
     # of the two different values.
+    store = _resolve_inbound_store(request, normalised)
     Conversation.objects.create(
         channel="phone",
         customer_identifier=normalised,
         status="abandoned",
+        store=store,
     )
 
     return HttpResponse("", content_type="text/plain")

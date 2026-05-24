@@ -76,4 +76,38 @@ describe("fetchStoreBrand", () => {
 
     expect(result).toEqual({ name: "PlayDesk", logo_url: null, accent: null });
   });
+
+  it("appends ?store=<slug> when a slug is passed (task #162)", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ name: "North", logo_url: null, accent: null }),
+    );
+
+    await fetchStoreBrand("playdesk-north");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/api/public/store-brand/?store=playdesk-north");
+  });
+
+  it("omits the query when called without a slug (legacy callers)", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ name: "Default", logo_url: null, accent: null }),
+    );
+
+    await fetchStoreBrand();
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/public\/store-brand\/$/);
+  });
+
+  it("URL-encodes the slug to defend against weird characters", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ name: "X", logo_url: null, accent: null }),
+    );
+
+    await fetchStoreBrand("weird slug/with?stuff");
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("?store=weird%20slug%2Fwith%3Fstuff");
+  });
 });

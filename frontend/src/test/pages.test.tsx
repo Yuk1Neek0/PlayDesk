@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-// BookingPage is the interactive client component; `app/page.tsx` is a thin
-// server entry that SSR-fetches branding and forwards it as a prop. Tests
-// exercise the client component directly with a stub brand.
-import BookingPage from "@/app/BookingPage";
+// BookingPage is the interactive client component now scoped under
+// `/s/[slug]/book` (v6 multi-location). `app/page.tsx` is a server-side
+// 302 redirect to `/s/<default>/book`; the client component is exercised
+// directly here with a stub brand + a stub URL slug.
+import BookingPage from "@/app/s/[slug]/book/BookingPage";
 import ChatPage from "@/app/chat/page";
 import AdminPage from "@/app/admin/page";
 
 const DEFAULT_BRAND = { name: "PlayDesk", logo_url: null, accent: null };
+const STUB_SLUG = "playdesk-flagship";
 
 // AdminPage is gated to the staff role — render it as a signed-in staff user.
 vi.mock("@/lib/auth", () => ({
@@ -71,13 +73,13 @@ describe("BookingPage", () => {
   });
 
   it("renders the page heading", async () => {
-    render(<BookingPage brand={DEFAULT_BRAND} />);
+    render(<BookingPage brand={DEFAULT_BRAND} storeSlug={STUB_SLUG} />);
     expect(screen.getByText(/Pick your station/i)).toBeTruthy();
     await screen.findByText("PS5 Station · A");
   });
 
   it("renders the four step titles", async () => {
-    render(<BookingPage brand={DEFAULT_BRAND} />);
+    render(<BookingPage brand={DEFAULT_BRAND} storeSlug={STUB_SLUG} />);
     expect(screen.getByText("Choose a resource")).toBeTruthy();
     expect(screen.getByText("Pick a date")).toBeTruthy();
     expect(screen.getByText("Choose a time")).toBeTruthy();
@@ -86,7 +88,7 @@ describe("BookingPage", () => {
   });
 
   it("renders resource cards loaded from the API", async () => {
-    render(<BookingPage brand={DEFAULT_BRAND} />);
+    render(<BookingPage brand={DEFAULT_BRAND} storeSlug={STUB_SLUG} />);
     expect(await screen.findByText("PS5 Station · A")).toBeTruthy();
     expect(await screen.findByText("Switch Station")).toBeTruthy();
   });

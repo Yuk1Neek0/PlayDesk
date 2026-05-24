@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from agent.llm_client import FakeLLMClient, LLMResponse, ToolCallRequest
 from evals.run_evals import (
     VALID_LABELS,
@@ -100,6 +102,14 @@ def test_eval_cases_file_is_valid():
 
 
 class TestRunCase:
+    @pytest.fixture(autouse=True)
+    def _seed_store(self, db):
+        from core.models import Store
+
+        Store.objects.get_or_create(
+            name="Eval Store", defaults={"timezone": "UTC", "business_hours": {}}
+        )
+
     def test_search_kb_case_passes(self, db):
         case = {
             "id": "t-kb",

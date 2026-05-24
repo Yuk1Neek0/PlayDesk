@@ -13,6 +13,7 @@ import {
   type OutboundMessage,
   type OutboundStatus,
 } from "@/lib/api";
+import { useCurrentStore } from "@/lib/store-context";
 
 interface Props {
   customerId: number;
@@ -43,6 +44,12 @@ function truncate(s: string, max: number): string {
 export default function OutboundMessagesSection({ customerId }: Props) {
   const [state, setState] = useState<State>(EMPTY);
 
+  // v6 multi-location: refetch on store switch so the section reflects the
+  // new store's outbound messages (or surfaces 404 if the customer isn't
+  // in that store).
+  const { current } = useCurrentStore();
+  const storeSlug = current?.slug ?? null;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -61,7 +68,7 @@ export default function OutboundMessagesSection({ customerId }: Props) {
       cancelled = true;
       window.clearInterval(handle);
     };
-  }, [customerId]);
+  }, [customerId, storeSlug]);
 
   return (
     <section className="pd-card">

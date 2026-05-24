@@ -1,16 +1,17 @@
 "use client";
 
-// Booking page — guided 4-step flow: resource → date → time → confirm.
-// UI ported from the Claude Design handoff; data is wired to the live
-// backend through the generated REST client (src/lib/api.ts) — resources,
-// availability, and booking creation are all real API calls. This completes
-// task #20.
+// Customer-facing booking page — store-scoped variant for the
+// `/s/[slug]/book` route. Near-identical to the legacy `app/BookingPage.tsx`
+// (which `app/page.tsx` now 302-redirects away from), with one difference:
+// every API call goes through `customerFetch(storeSlug, ...)` so the
+// `X-PD-Store-Slug` header is set from the URL segment. That guarantees
+// the booking lands on the URL store regardless of any pd_store_slug
+// cookie an admin tab may have set, or the alphabetically-first fallback.
 //
-// Branding (v5 branded-booking): the `brand` prop is fetched SSR-side by
-// the parent server component (`app/page.tsx`) and carries an optional
-// logo URL + accent colour. When set, the logo replaces the default SVG
-// in the header, and `--pd-accent` (mirrored to `--accent` so the
-// existing CSS picks it up) restyles the primary CTAs.
+// Deliberately does NOT import `listResources`, `getResourceAvailability`,
+// or `createBooking` from `@/lib/api` — those route through `adminFetch`,
+// which reads the admin StoreContext and would cross-leak (see comment in
+// `customer-fetch.ts`). The three local helpers below issue scoped calls.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Ref } from "react";
@@ -19,12 +20,14 @@ import { Icon, ResourceArt, RESOURCE_TYPE_LABEL, fmtFullDate, isoDate } from "@/
 import { HOURS, type Resource, type ResourceMeta, type ResourceType } from "@/lib/pd-data";
 import {
   ApiError,
-  createBooking,
-  getResourceAvailability,
-  listResources,
+  withTrailingSlash,
+  type AvailabilityResponse,
+  type Booking,
   type BookingCreate,
+  type PaginatedResources,
   type Resource as ApiResource,
 } from "@/lib/api";
+import { customerFetch } from "@/lib/customer-fetch";
 import { isoAt, pad, storeToday, toSlotData, type SlotData } from "@/lib/booking-availability";
 import type { StoreBrand } from "@/lib/store-brand";
 
@@ -55,6 +58,34 @@ interface AvailabilityState {
   data: SlotData | null;
 }
 
+// Scoped REST shims — same shapes as @/lib/api but routed through
+// customerFetch so the URL store wins. The single-source-of-truth `request()`
+// in api.ts intentionally delegates to adminFetch (StoreContext-aware);
+// customer pages don't mount that provider, so we issue three direct calls
+// from here. Keeping them inline avoids a parallel admin/customer split of
+// the entire typed client.
+function listResourcesScoped(slug: string): Promise<PaginatedResources> {
+  return customerFetch<PaginatedResources>(slug, withTrailingSlash("/api/resources"));
+}
+
+function getAvailabilityScoped(
+  slug: string,
+  id: number,
+  date: string,
+): Promise<AvailabilityResponse> {
+  return customerFetch<AvailabilityResponse>(
+    slug,
+    withTrailingSlash(`/api/resources/${id}/availability?date=${encodeURIComponent(date)}`),
+  );
+}
+
+function createBookingScoped(slug: string, body: BookingCreate): Promise<Booking> {
+  return customerFetch<Booking>(slug, withTrailingSlash("/api/bookings"), {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 // API `Resource` (freeform metadata) → the view model the design uses.
 function toViewResource(r: ApiResource): Resource {
   return {
@@ -67,7 +98,12 @@ function toViewResource(r: ApiResource): Resource {
   };
 }
 
-export default function BookingPage({ brand }: { brand: StoreBrand }) {
+interface BookingPageProps {
+  brand: StoreBrand;
+  storeSlug: string;
+}
+
+export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
   const [resourcesState, setResourcesState] = useState<ResourcesState>({
     loading: true,
     error: false,
@@ -92,7 +128,7 @@ export default function BookingPage({ brand }: { brand: StoreBrand }) {
   // Load the resource catalogue from the API once.
   useEffect(() => {
     let cancelled = false;
-    listResources()
+    listResourcesScoped(storeSlug)
       .then((page) => {
         if (!cancelled) {
           setResourcesState({ loading: false, error: false, data: page.results.map(toViewResource) });
@@ -104,7 +140,7 @@ export default function BookingPage({ brand }: { brand: StoreBrand }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [storeSlug]);
 
   // Load availability whenever the resource or date changes.
   useEffect(() => {
@@ -112,7 +148,7 @@ export default function BookingPage({ brand }: { brand: StoreBrand }) {
     let cancelled = false;
     setAvailability({ loading: true, error: false, data: null });
     setSlot(null);
-    getResourceAvailability(resource.id, isoDate(date))
+    getAvailabilityScoped(storeSlug, resource.id, isoDate(date))
       .then((resp) => {
         if (!cancelled) setAvailability({ loading: false, error: false, data: toSlotData(resp) });
       })
@@ -122,7 +158,7 @@ export default function BookingPage({ brand }: { brand: StoreBrand }) {
     return () => {
       cancelled = true;
     };
-  }, [resource, date]);
+  }, [resource, date, storeSlug]);
 
   const step1 = useRef<HTMLElement>(null);
   const step2 = useRef<HTMLElement>(null);
@@ -166,7 +202,7 @@ export default function BookingPage({ brand }: { brand: StoreBrand }) {
       end_time: isoAt(date, startHour + duration),
       source: "manual",
     };
-    createBooking(body)
+    createBookingScoped(storeSlug, body)
       .then((booking) => {
         setConfirmedBooking({
           id: booking.id,
@@ -229,11 +265,6 @@ export default function BookingPage({ brand }: { brand: StoreBrand }) {
     ? (parseFloat(resource.price_per_hour) * duration).toFixed(0)
     : "—";
 
-  // When the store sets an accent oklch/hex/rgb value, override both the
-  // task-spec'd `--pd-accent` and the design-system's `--accent` (which
-  // the existing CSS actually consumes) so primary CTAs and selected-state
-  // chrome pick up the branded colour. No inline style when unset, so the
-  // default `--accent` from playdesk.css wins unchanged.
   const wrapperStyle: React.CSSProperties | undefined = brand.accent
     ? ({ "--pd-accent": brand.accent, "--accent": brand.accent } as React.CSSProperties)
     : undefined;
@@ -243,9 +274,6 @@ export default function BookingPage({ brand }: { brand: StoreBrand }) {
       <header className="pd-page-head">
         <div className="pd-brand-logo">
           {brand.logo_url ? (
-            // Plain <img> on purpose — the logo URL is admin-set and may
-            // point at any CDN; routing through next/image would require
-            // an `images.domains` allowlist this v5 slice doesn't manage.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               className="pd-brand-logo-img"
@@ -573,7 +601,6 @@ function SlotsGrid({
 
   const free = new Set(availability.data.available);
   const lastHour = 23 - (duration - 1);
-  // A slot is usable only if `duration` consecutive hours are all free.
   const usableFree = HOURS.filter((h) => {
     if (parseInt(h, 10) > lastHour) return false;
     for (let i = 0; i < duration; i++) {
