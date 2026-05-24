@@ -1,13 +1,14 @@
 """
-Twilio SMS webhook.
+Twilio webhooks (SMS + WhatsApp).
 
 POST /api/webhooks/twilio/sms/
+POST /api/webhooks/twilio/whatsapp/
 
-Verifies the inbound signature (mandatory — no dev-mode bypass), runs
-the agent loop synchronously over the normalised message, and returns
-TwiML carrying the assembled assistant reply. When ``TWILIO_AUTH_TOKEN``
-is unset the endpoint returns ``503 not_configured`` cleanly so CI
-without secrets stays green.
+Each view verifies the inbound signature (mandatory — no dev-mode
+bypass), runs the agent loop synchronously over the normalised message,
+and returns TwiML carrying the assembled assistant reply. When
+``TWILIO_AUTH_TOKEN`` is unset the endpoint returns ``503 not_configured``
+cleanly so CI without secrets stays green.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from django.views.decorators.http import require_POST
 
 from agent.channels.twilio_signature import verify_twilio_signature
 from agent.channels.twilio_sms import TwilioSmsAdapter
+from agent.channels.twilio_whatsapp import TwilioWhatsAppAdapter
 from agent.llm_client import AnthropicClient
 from agent.loop import AgentLoop
 from core.models import Conversation
@@ -97,8 +99,62 @@ def twilio_sms_webhook(request: HttpRequest) -> HttpResponse:
     return HttpResponse(reply, content_type="application/xml")
 
 
-# Convenience export so urls.py can import a single symbol.
-__all__ = ["twilio_sms_webhook"]
+@csrf_exempt
+@require_POST
+def twilio_whatsapp_webhook(request: HttpRequest) -> HttpResponse:
+    """Inbound WhatsApp messages from Twilio.
+
+    Structurally identical to `twilio_sms_webhook` — the only swaps are
+    the channel tag (`"whatsapp"`) and the adapter used to parse Twilio's
+    `whatsapp:+E.164` `From` field into a bare E.164 `customer_identifier`.
+    """
+    token = getattr(settings, "TWILIO_AUTH_TOKEN", "") or ""
+    if not token:
+        return JsonResponse({"error": "not_configured"}, status=503)
+
+    if not _signature_ok(request, token):
+        return JsonResponse({"error": "invalid_signature"}, status=403)
+
+    form_payload = {k: v for k, v in request.POST.items()}
+    adapter = TwilioWhatsAppAdapter()
+    inbound = adapter.normalize_inbound(form_payload)
+
+    if not inbound.text:
+        # Empty body → ack with empty TwiML so Twilio doesn't retry.
+        return HttpResponse(adapter.format_outbound(""), content_type="application/xml")
+
+    # One conversation per (channel, customer_identifier). The WhatsApp
+    # `customer_identifier` is the bare E.164 the adapter produced after
+    # stripping the `whatsapp:` prefix — same shape as SMS.
+    conv, _ = Conversation.objects.get_or_create(
+        customer_identifier=inbound.customer_identifier,
+        channel="whatsapp",
+        defaults={},
+    )
+
+    loop = AgentLoop(
+        llm_client=AnthropicClient(),
+        rag_chunks=inbound.rag_chunks,
+    )
+    try:
+        summary = loop.run(conversation=conv, user_content=inbound.text)
+        final_text = summary.get("text") or ""
+        booking_id = summary.get("booking_id")
+        iteration_count = summary.get("iteration_count", 0)
+    except Exception:  # noqa: BLE001
+        final_text = "Sorry — I hit a problem just now. A human will follow up."
+        booking_id = None
+        iteration_count = 0
+
+    reply = adapter.format_outbound(
+        final_text,
+        metadata={"booking_id": booking_id, "iteration_count": iteration_count},
+    )
+    return HttpResponse(reply, content_type="application/xml")
+
+
+# Convenience exports so urls.py can import single symbols.
+__all__ = ["twilio_sms_webhook", "twilio_whatsapp_webhook"]
 
 
 # `json` import is kept for future JSON-based webhook variants.
