@@ -51,6 +51,7 @@ from .views_memberships import (
     RewardTierViewSet,
     RewardViewSet,
 )
+from .views_metrics import BusinessMetricsView
 from .views_outbound import OutboundMessageListView
 from .webhooks_twilio import twilio_sms_webhook
 
@@ -188,6 +189,12 @@ urlpatterns = [
         "admin/outbound/",
         OutboundMessageListView.as_view(),
         name="admin-outbound-list",
+    ),
+    # Composite business-metrics endpoint backing the /admin dashboard strip
+    path(
+        "admin/metrics/business/",
+        BusinessMetricsView.as_view(),
+        name="admin-business-metrics",
     ),
     # Stripe webhook — confirms a booking when its deposit is paid
     path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"),
