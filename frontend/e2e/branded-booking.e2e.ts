@@ -42,7 +42,9 @@ test.afterAll(() => {
 test("brand={} renders the default-state header (no logo image, no inline accent)", async ({
   page,
 }) => {
-  await page.goto("/");
+  // Phase 2 hub: `/` is no longer a redirect; the brand surface lives on
+  // the store-scoped booking page.
+  await page.goto("/s/playdesk-flagship/book");
   await expect(page.getByRole("heading", { name: /Pick your station/ })).toBeVisible();
 
   // No branded <img> — the default SVG mark renders instead.
@@ -59,7 +61,7 @@ test("brand={logo_url, accent} renders the <img> and sets --pd-accent on the wra
 }) => {
   setBrand(`{"logo_url": "${LOGO_URL}", "accent": "${ACCENT}"}`);
 
-  await page.goto("/");
+  await page.goto("/s/playdesk-flagship/book");
   await expect(page.getByRole("heading", { name: /Pick your station/ })).toBeVisible();
 
   const img = page.locator(".pd-brand-logo-img");

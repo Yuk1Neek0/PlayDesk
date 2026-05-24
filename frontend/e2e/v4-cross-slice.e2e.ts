@@ -77,7 +77,8 @@ test("customer detail page shows BOTH membership + outbound sections with real d
   const customerName = `Playwright v4 ${Date.now()}`;
   const customerPhone = `+1 416 555 ${phoneSuffix}`;
 
-  await page.goto("/");
+  // Phase 2 hub: `/` is no longer a redirect, navigate to booking directly.
+  await page.goto("/s/playdesk-flagship/book");
   await page.locator("button.pd-rcard").first().click();
   await page.locator("button.pd-seg-item").first().click();
   const slot = await pickFirstFreeSlot(page);

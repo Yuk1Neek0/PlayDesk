@@ -939,6 +939,68 @@ body {
      the editorial moment on the page that should land on every device. */
 }
 
+/* —————— HUB HOMEPAGE (/) —————— */
+/* Four-entry hub introduced by Phase 2 commit 4 (DESIGN_AUDIT.md §4).
+   Mobile-first: vertical stack with Book elevated; desktop folds into a
+   2×2 grid. The primary card carries the accent border + a quiet fill;
+   the other three stay in the warm-base surface. */
+.pd-hub {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--gap-grid);
+  margin-top: 28px;
+}
+@media (min-width: 720px) {
+  .pd-hub { grid-template-columns: 1fr 1fr; }
+}
+.pd-hub-card {
+  position: relative;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 24px 22px 28px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  color: var(--text);
+  transition: border-color var(--t), transform var(--t-fast), background var(--t);
+  animation: pd-fade-up 380ms var(--ease) both;
+}
+.pd-hub-card:hover { border-color: var(--hairline-2); transform: translateY(-1px); }
+.pd-hub-card:nth-child(2) { animation-delay: 50ms; }
+.pd-hub-card:nth-child(3) { animation-delay: 100ms; }
+.pd-hub-card:nth-child(4) { animation-delay: 150ms; }
+.pd-hub-card--primary {
+  background: oklch(from var(--accent) 0.18 0.06 h / .12);
+  border-color: var(--accent-border);
+}
+.pd-hub-card--primary:hover { border-color: var(--accent); }
+@media (min-width: 720px) {
+  /* Make Book span the full top row on desktop so it visually leads. */
+  .pd-hub-card--primary { grid-column: 1 / -1; min-height: 180px; }
+  .pd-hub-card--primary .pd-hub-card-title { font-size: clamp(28px, 3.4vw, 38px); }
+}
+.pd-hub-card-eyebrow {
+  font-family: var(--font-mono); font-size: var(--fs-micro);
+  color: var(--text-3); letter-spacing: 0.14em; text-transform: uppercase;
+}
+.pd-hub-card--primary .pd-hub-card-eyebrow { color: var(--accent); }
+.pd-hub-card-title {
+  font-family: var(--font-display-serif); font-weight: 600;
+  font-size: clamp(22px, 4.4vw, 30px);
+  letter-spacing: -0.015em; line-height: 1.12;
+  margin: 2px 0 4px;
+}
+.pd-hub-card-body {
+  margin: 0; max-width: 46ch;
+  font-size: 14.5px; color: var(--text-2); line-height: 1.55;
+}
+.pd-hub-card-arrow {
+  position: absolute; top: 22px; right: 22px;
+  font-size: 22px; color: var(--text-3);
+  transition: transform var(--t), color var(--t);
+}
+.pd-hub-card:hover .pd-hub-card-arrow { color: var(--text); transform: translateX(2px); }
+.pd-hub-card--primary .pd-hub-card-arrow { color: var(--accent); }
+
 /* —————— PAGE WRAPPERS —————— */
 /* Generic page wrappers used by the customer surfaces. .pd-page--booking
    and the customer-account variant inherit margin/padding from .pd-main

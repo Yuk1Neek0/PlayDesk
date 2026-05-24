@@ -36,7 +36,8 @@ async function pickFirstFreeSlot(page: Page): Promise<string> {
 }
 
 async function bookOne(page: Page, customer: string, phone: string): Promise<string> {
-  await page.goto("/");
+  // Phase 2 hub: `/` is no longer a redirect, navigate to booking directly.
+  await page.goto("/s/playdesk-flagship/book");
   await expect(page.locator("button.pd-rcard").first()).toBeVisible();
   await page.locator("button.pd-rcard").first().click();
   await page.locator("button.pd-seg-item").first().click();

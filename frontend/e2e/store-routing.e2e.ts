@@ -6,9 +6,11 @@ import { signInAsStaff } from "./helpers";
 //
 // Verifies:
 //   1. `/s/playdesk-flagship/book` renders the flagship-branded booking page.
-//   2. `/` server-redirects (302) to the default store's `/s/<slug>/book` URL.
-//      The default is the alphabetically-first store, so as long as the
-//      seeded flagship exists it lands on `/s/playdesk-flagship/book`.
+//   2. `/` renders the four-entry hub (Phase 2 design refresh retired the
+//      v6-era 302 to `/s/<slug>/book` — see DESIGN_AUDIT.md §4) and the
+//      "Book now" entry still links to the default store's
+//      `/s/<slug>/book` URL, so printed QRs / bookmarks pointing at `/`
+//      keep working with one extra tap.
 //
 // This suite intentionally does NOT mutate brand state — that's
 // branded-booking.e2e.ts's job. Here we just need the booking page to
@@ -39,14 +41,17 @@ test("direct nav to /s/<flagship>/book renders the booking page", async ({ page 
   await expect(page.locator("button.pd-rcard").first()).toBeVisible();
 });
 
-test("/ redirects to the default store's /s/<slug>/book URL", async ({ page }) => {
+test("/ renders the hub and the Book entry points at the default store", async ({ page }) => {
   const response = await page.goto("/");
-  // The server-side redirect lands on a 200 page; assert the URL not the
-  // status (Next.js may emit a 307/308 for the redirect step internally).
-  await expect(page).toHaveURL(new RegExp(`/s/[^/]+/book/?$`));
-  // The fully-resolved page is the customer booking page.
-  await expect(page.getByRole("heading", { name: /Pick your station/ })).toBeVisible();
-  // Sanity-check the response object is non-null (catches any redirect-loop
+  // Phase 2 design refresh: `/` is now a real landing, not a 302. Assert
+  // the hub hero copy is on the page and the Book CTA's href is the
+  // default-store booking URL the v6 redirect used to use.
+  await expect(page).toHaveURL(/\/?$/);
+  await expect(page.getByRole("heading", { name: /Welcome to/ })).toBeVisible();
+  const bookCta = page.getByRole("link", { name: /Book now/ });
+  await expect(bookCta).toBeVisible();
+  await expect(bookCta).toHaveAttribute("href", new RegExp(`/s/[^/]+/book$`));
+  // Sanity-check the response object is non-null (catches navigation
   // regressions that would have caused page.goto to throw).
   expect(response).not.toBeNull();
 });
