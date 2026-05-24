@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { CohortChip } from "@/components/admin/cohort-chip";
 import MembershipSection from "@/components/admin/membership-section";
 import OutboundMessagesSection from "@/components/admin/outbound-messages-section";
 import { fmtDate, fmtTime, relTime } from "@/components/pd-ui";
@@ -110,7 +111,18 @@ export default function CustomerDetailPage() {
             {c.email ? ` · ${c.email}` : ""}
           </div>
         </div>
-        <div className="pd-admin-head-r">
+        <div className="pd-admin-head-r" style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          {/* v11c retention-scoring — cohort + churn score at-a-glance. */}
+          <div className="pd-stat" style={{ minWidth: 140 }}>
+            <div className="pd-stat-label">Cohort</div>
+            <div className="pd-stat-value">
+              <CohortChip cohort={c.cohort} />
+            </div>
+            <div className="pd-card-sub pd-mono" style={{ marginTop: 4 }}>
+              churn {c.churn_score.toFixed(2)}
+              {c.retention_updated_at && ` · upd ${relTime(c.retention_updated_at)}`}
+            </div>
+          </div>
           <div className="pd-stat" style={{ minWidth: 160 }}>
             <div className="pd-stat-label">Total visits</div>
             <div className="pd-stat-value pd-mono">{c.total_visits}</div>

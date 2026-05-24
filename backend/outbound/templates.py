@@ -104,6 +104,13 @@ TEMPLATES: dict[str, tuple[str, str]] = {
         "PlayDesk: complete your booking payment (${balance}): {checkout_url}",
         "PlayDesk：请完成预订余款支付（${balance}）：{checkout_url}",
     ),
+    # v11c retention-scoring — re-engagement nudge for dormant cohorts.
+    # NOT in URGENT_TEMPLATE_KEYS: respects quiet hours by design.
+    "re_engagement_60d": (
+        "Hi {customer_name}, it's been a while! Come back this week and we'll "
+        "comp your first hour. Reply YES to book — or skip if you're set.",
+        "{customer_name} 您好，最近没见到您！本周回来，第一小时免费 — 回复 YES 即可预订。",
+    ),
 }
 
 
