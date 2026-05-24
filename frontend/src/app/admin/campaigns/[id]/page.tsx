@@ -21,7 +21,7 @@ import {
   type CampaignRunStatus,
   type CampaignStatus,
 } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useStaffSession } from "@/lib/staff-session";
 import { useCurrentStore } from "@/lib/store-context";
 
 const PAGE_SIZE = 50;
@@ -54,9 +54,9 @@ export default function CampaignDetailPage() {
   const idStr = params?.id;
   const campaignId = useMemo(() => (idStr ? Number(idStr) : NaN), [idStr]);
 
-  const { user, ready: authReady } = useAuth();
+  const { user, ready: authReady } = useStaffSession();
   useEffect(() => {
-    if (authReady && user?.role !== "staff") router.replace("/login");
+    if (authReady && !user?.is_staff) router.replace("/staff/login");
   }, [authReady, user, router]);
 
   const [campaign, setCampaign] = useState<Campaign | null>(null);
@@ -119,7 +119,7 @@ export default function CampaignDetailPage() {
   const totalPages = Math.max(1, Math.ceil(runsCount / PAGE_SIZE));
 
   if (!authReady) return <div className="pd-admin" />;
-  if (user?.role !== "staff") return null;
+  if (!user?.is_staff) return null;
 
   return (
     <div className="pd-admin">

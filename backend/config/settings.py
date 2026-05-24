@@ -69,6 +69,10 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "core.middleware.CurrentStoreMiddleware",
     "core.middleware.CustomerSessionMiddleware",
+    # v10a — gates /api/admin/* on a staff Django session. Runs LAST so
+    # `request.user` (set by AuthenticationMiddleware) and `request.store`
+    # (set by CurrentStoreMiddleware) are both populated before the check.
+    "core.middleware.StaffOnlyMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -167,6 +171,18 @@ SITE_URL = env("SITE_URL", default="http://localhost:3000")
 # of erroring out without SMTP. Tests override to locmem via pytest-django.
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@playdesk.local")
+
+# ---------------------------------------------------------------------------
+# Sessions — v10a staff-auth ships real Django session login for /admin/*.
+# Settings are explicit (not Django defaults) so the cookie security stance
+# is reviewable in one place. SESSION_COOKIE_SECURE flips to True in prod
+# via the env var; dev/test runs over plain HTTP and must allow the cookie.
+# ---------------------------------------------------------------------------
+SESSION_COOKIE_AGE = 14 * 24 * 3600  # 14 days
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
+LOGIN_URL = "/staff/login/"
 
 # ---------------------------------------------------------------------------
 # Caches — Django LocMem cache backs the customer-portal OTP rate-limiter.

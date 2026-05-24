@@ -16,7 +16,7 @@ import {
   type PricingRule,
   type Resource,
 } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useStaffSession } from "@/lib/staff-session";
 
 import QuoteSandbox from "./QuoteSandbox";
 import RuleForm, { BLANK_DRAFT, ruleToDraft, type DraftRule } from "./RuleForm";
@@ -38,10 +38,10 @@ export default function AdminPricingPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
-  const { user, ready: authReady } = useAuth();
+  const { user, ready: authReady } = useStaffSession();
   const router = useRouter();
   useEffect(() => {
-    if (authReady && user?.role !== "staff") router.replace("/login");
+    if (authReady && !user?.is_staff) router.replace("/staff/login");
   }, [authReady, user, router]);
 
   const refresh = useCallback(async () => {
@@ -118,7 +118,7 @@ export default function AdminPricingPage() {
   }
 
   if (!authReady) return <div className="pd-admin" />;
-  if (user?.role !== "staff") return null;
+  if (!user?.is_staff) return null;
   if (loading) {
     return (
       <div className="pd-admin">

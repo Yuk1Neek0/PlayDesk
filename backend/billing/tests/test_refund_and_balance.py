@@ -13,6 +13,12 @@ from django.utils import timezone
 
 from billing.models import Payment, PaymentKind
 from billing.views import cancel_booking_with_refund, sweep_pending_payments
+from conftest import make_staff_client
+
+
+def _client() -> Client:
+    """Helper — fresh staff-authenticated client (v10a)."""
+    return make_staff_client(Client)
 
 
 def _paid_booking(resource, customer, deposit: Decimal, hours_ahead: float):
@@ -92,7 +98,7 @@ class TestChargeBalance:
             override_settings(STRIPE_SECRET_KEY="sk_test_x"),
             mock.patch("stripe.checkout.Session.create", return_value=fake_session) as create,
         ):
-            resp = Client().post(
+            resp = _client().post(
                 f"/api/admin/bookings/{booking.pk}/charge-balance/",
                 content_type="application/json",
                 HTTP_X_PD_STORE_SLUG=store.slug,
@@ -117,7 +123,7 @@ class TestChargeBalance:
             payment_status=PaymentStatus.PAID_IN_FULL,
             deposit_amount=Decimal("80.00"),
         )
-        resp = Client().post(
+        resp = _client().post(
             f"/api/admin/bookings/{booking.pk}/charge-balance/",
             content_type="application/json",
             HTTP_X_PD_STORE_SLUG=store.slug,

@@ -29,6 +29,7 @@ import time as _time
 from typing import TYPE_CHECKING
 
 from django.core import signing
+from django.http import JsonResponse
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -243,3 +244,47 @@ class CustomerSessionMiddleware:
         if getattr(request, "_customer_cookie_should_clear", False):
             response.delete_cookie(CUSTOMER_COOKIE_NAME, path="/")
         return response
+
+
+# ---------------------------------------------------------------------------
+# Staff-only gate (v10a) — see PRD .claude/prds/staff-auth.md
+# ---------------------------------------------------------------------------
+
+# URL prefix this middleware gates. Centralised constant so tests and the
+# StaffSessionProvider docs reference one source of truth.
+STAFF_ONLY_URL_PREFIX = "/api/admin/"
+
+
+class StaffOnlyMiddleware:
+    """Gate every ``/api/admin/*`` request on a staff Django session.
+
+    Reverses the project's historical "no API-level permission gates"
+    convention — but ONLY for ``/api/admin/*``. Customer endpoints
+    (``/api/me/*``, ``/api/quote/``, ``/api/c/<token>/``, ``/api/bookings/``)
+    are NOT touched and keep their customer-cookie / public semantics.
+    See PRD ``.claude/prds/staff-auth.md`` for the rationale: the
+    convention made sense when there was no real auth, but now there
+    is, and the admin URLs should fail closed by default.
+
+    Behaviour:
+      - Anonymous request to ``/api/admin/*`` → 401 JSON.
+      - Authenticated non-staff request → 403 JSON.
+      - Staff request → pass through.
+      - Anything else → pass through unchanged.
+
+    Must run AFTER ``django.contrib.auth.middleware.AuthenticationMiddleware``
+    (so ``request.user`` is populated) and AFTER ``CurrentStoreMiddleware``
+    (so admin views still see ``request.store``).
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        if request.path.startswith(STAFF_ONLY_URL_PREFIX):
+            user = getattr(request, "user", None)
+            if user is None or not user.is_authenticated:
+                return JsonResponse({"detail": "Authentication required."}, status=401)
+            if not user.is_staff:
+                return JsonResponse({"detail": "Staff access required."}, status=403)
+        return self.get_response(request)

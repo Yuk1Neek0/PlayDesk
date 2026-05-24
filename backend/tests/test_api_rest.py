@@ -31,8 +31,16 @@ _UTC = UTC
 
 
 @pytest.fixture()
-def api_client():
-    return APIClient()
+def api_client(staff_user):
+    """DRF APIClient pre-logged-in as the shared `test_staff` user (v10a).
+
+    The shared ``staff_user`` fixture (conftest.py) gates this test file's
+    admin-endpoint calls past ``StaffOnlyMiddleware``. Tests in this file
+    that hit public endpoints (resources, bookings) are unaffected.
+    """
+    c = APIClient()
+    c.force_login(staff_user)
+    return c
 
 
 @pytest.fixture()

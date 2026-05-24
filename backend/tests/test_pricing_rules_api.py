@@ -15,8 +15,11 @@ pytestmark = [
 
 
 @pytest.fixture()
-def api_client():
-    return APIClient()
+def api_client(staff_user):
+    """DRF APIClient pre-logged-in as `test_staff` (v10a)."""
+    c = APIClient()
+    c.force_login(staff_user)
+    return c
 
 
 @pytest.fixture()

@@ -16,7 +16,7 @@ import {
   type Campaign,
   type CampaignStatus,
 } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useStaffSession } from "@/lib/staff-session";
 import { useCurrentStore } from "@/lib/store-context";
 
 const STATUS_TONE: Record<CampaignStatus, string> = {
@@ -41,10 +41,10 @@ export default function AdminCampaignsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  const { user, ready: authReady } = useAuth();
+  const { user, ready: authReady } = useStaffSession();
   const router = useRouter();
   useEffect(() => {
-    if (authReady && user?.role !== "staff") router.replace("/login");
+    if (authReady && !user?.is_staff) router.replace("/staff/login");
   }, [authReady, user, router]);
 
   // v6 multi-location: prefer the active store from <StoreProvider>;
@@ -104,7 +104,7 @@ export default function AdminCampaignsPage() {
   }, [storeId]);
 
   if (!authReady) return <div className="pd-admin" />;
-  if (user?.role !== "staff") return null;
+  if (!user?.is_staff) return null;
 
   return (
     <div className="pd-admin">

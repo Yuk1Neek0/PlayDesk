@@ -70,6 +70,7 @@ from .views_memberships import (
 from .views_metrics import BusinessMetricsView
 from .views_outbound import OutboundMessageListView
 from .views_public import DefaultStoreView, StoreBrandView
+from .views_staff_auth import StaffLoginView, StaffLogoutView, StaffMeView
 from .webhooks_twilio import (
     twilio_sms_webhook,
     twilio_voice_status_callback,
@@ -251,6 +252,22 @@ urlpatterns = [
         "customer-auth/logout/",
         LogoutView.as_view(),
         name="customer-auth-logout",
+    ),
+    # Staff-portal auth (v10a) — Django session login for /admin/* operators.
+    path(
+        "staff/login/",
+        StaffLoginView.as_view(),
+        name="staff-login",
+    ),
+    path(
+        "staff/logout/",
+        StaffLogoutView.as_view(),
+        name="staff-logout",
+    ),
+    path(
+        "staff/me/",
+        StaffMeView.as_view(),
+        name="staff-me",
     ),
     # Customer-portal /api/me/* — gated on request.customer via middleware.
     path("me/", MeView.as_view(), name="me-profile"),

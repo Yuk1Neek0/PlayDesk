@@ -210,7 +210,32 @@ class Command(BaseCommand):
         # at Flagship so customer-portal.e2e.ts can drive the full flow
         # against deterministic data.
         self._seed_customer_portal_fixture()
+        # v10a staff-auth: seed a known staff login so developers and
+        # Playwright can sign into /admin immediately after a fresh boot.
+        self._seed_demo_staff_user()
         self.stdout.write(self.style.SUCCESS("Seed complete."))
+
+    def _seed_demo_staff_user(self) -> None:
+        """Idempotently create the `playdesk_staff` demo user (v10a).
+
+        Password is intentionally well-known so the disclosure is the
+        seed log line — operators rotate it before any non-dev deploy.
+        """
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        username = "playdesk_staff"
+        password = "playdesk_staff_demo_pw"
+        user, created = User.objects.get_or_create(
+            username=username,
+            defaults={"is_staff": True, "is_active": True},
+        )
+        if created:
+            user.set_password(password)
+            user.is_staff = True
+            user.is_active = True
+            user.save()
+        self.stdout.write(f"Demo staff: username={username} password={password}")
 
     def _seed_customer_portal_fixture(self) -> None:
         flagship = Store.objects.filter(slug="playdesk-flagship").first()

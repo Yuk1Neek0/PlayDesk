@@ -16,7 +16,7 @@ import {
   adminGetCustomer,
   type CustomerDetail,
 } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useStaffSession } from "@/lib/staff-session";
 import { useCurrentStore } from "@/lib/store-context";
 
 interface State {
@@ -37,10 +37,10 @@ export default function CustomerDetailPage() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteError, setNoteError] = useState("");
 
-  const { user, ready: authReady } = useAuth();
+  const { user, ready: authReady } = useStaffSession();
   const router = useRouter();
   useEffect(() => {
-    if (authReady && user?.role !== "staff") router.replace("/login");
+    if (authReady && !user?.is_staff) router.replace("/staff/login");
   }, [authReady, user, router]);
 
   // v6 multi-location: refetch on store switch so a customer that doesn't
@@ -82,7 +82,7 @@ export default function CustomerDetailPage() {
   }
 
   if (!authReady) return <div className="pd-admin" />;
-  if (user?.role !== "staff") return null;
+  if (!user?.is_staff) return null;
   if (state.loading) return <div className="pd-admin"><div className="pd-empty">Loading…</div></div>;
   if (state.error || !state.data) {
     return (

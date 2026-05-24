@@ -7,6 +7,13 @@ from unittest import mock
 import pytest
 from django.test import Client, override_settings
 
+from conftest import make_staff_client
+
+
+def _client() -> Client:
+    """Helper — fresh staff-authenticated client (v10a)."""
+    return make_staff_client(Client)
+
 
 @pytest.mark.django_db
 class TestConnectEndpoint:
@@ -17,7 +24,7 @@ class TestConnectEndpoint:
             mock.patch.dict("os.environ", {"STRIPE_TEST_MODE": "False"}, clear=False),
             mock.patch.dict("os.environ", {"STRIPE_SECRET_KEY": ""}, clear=False),
         ):
-            resp = Client().post(
+            resp = _client().post(
                 "/api/admin/stripe/connect/",
                 content_type="application/json",
                 HTTP_X_PD_STORE_SLUG=store.slug,
@@ -33,7 +40,7 @@ class TestConnectEndpoint:
                 clear=False,
             ),
         ):
-            resp = Client().post(
+            resp = _client().post(
                 "/api/admin/stripe/connect/",
                 content_type="application/json",
                 HTTP_X_PD_STORE_SLUG=store.slug,
@@ -49,7 +56,7 @@ class TestConnectEndpoint:
             mock.patch("stripe.Account.create", return_value=fake_account) as account_create,
             mock.patch("stripe.AccountLink.create", return_value=fake_link),
         ):
-            resp = Client().post(
+            resp = _client().post(
                 "/api/admin/stripe/connect/",
                 content_type="application/json",
                 HTTP_X_PD_STORE_SLUG=store.slug,
@@ -71,7 +78,7 @@ class TestConnectEndpoint:
             mock.patch("stripe.Account.create") as account_create,
             mock.patch("stripe.AccountLink.create", return_value=fake_link),
         ):
-            resp = Client().post(
+            resp = _client().post(
                 "/api/admin/stripe/connect/",
                 content_type="application/json",
                 HTTP_X_PD_STORE_SLUG=store.slug,
@@ -91,7 +98,7 @@ class TestReturnEndpoint:
             override_settings(STRIPE_SECRET_KEY="sk_test_x"),
             mock.patch("stripe.Account.retrieve", return_value=fake_account) as retrieve,
         ):
-            resp = Client().get(f"/api/admin/stripe/return/?store={store.slug}")
+            resp = _client().get(f"/api/admin/stripe/return/?store={store.slug}")
         assert resp.status_code in (301, 302)
         store.refresh_from_db()
         assert store.stripe_charges_enabled is True
@@ -104,7 +111,7 @@ class TestStatusEndpoint:
         store.stripe_account_id = "acct_z"
         store.stripe_charges_enabled = True
         store.save()
-        resp = Client().get("/api/admin/stripe/status/", HTTP_X_PD_STORE_SLUG=store.slug)
+        resp = _client().get("/api/admin/stripe/status/", HTTP_X_PD_STORE_SLUG=store.slug)
         assert resp.status_code == 200
         body = resp.json()
         assert body["account_id"] == "acct_z"
@@ -122,7 +129,7 @@ class TestSettingsUpdate:
                 {"min_hours": 0, "refund_pct": 0},
             ],
         }
-        resp = Client().patch(
+        resp = _client().patch(
             "/api/admin/stripe/settings/",
             data=payload,
             content_type="application/json",
@@ -135,7 +142,7 @@ class TestSettingsUpdate:
         assert store.refund_matrix[0]["refund_pct"] == 100
 
     def test_rejects_bad_matrix(self, store):
-        resp = Client().patch(
+        resp = _client().patch(
             "/api/admin/stripe/settings/",
             data={"refund_matrix": "not-a-list"},
             content_type="application/json",

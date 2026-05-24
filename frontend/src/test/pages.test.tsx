@@ -11,14 +11,21 @@ import AdminPage from "@/app/admin/page";
 const DEFAULT_BRAND = { name: "PlayDesk", logo_url: null, accent: null };
 const STUB_SLUG = "playdesk-flagship";
 
-// AdminPage is gated to the staff role — render it as a signed-in staff user.
-vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({
-    user: { name: "Staff Member", role: "staff" as const },
+// AdminPage is gated by useStaffSession() — render it as a signed-in
+// staff user via the v10a hook (the localStorage-based useAuth is gone).
+vi.mock("@/lib/staff-session", () => ({
+  useStaffSession: () => ({
+    user: {
+      id: 1,
+      username: "test_staff",
+      is_staff: true,
+      is_superuser: false,
+    },
     ready: true,
-    login: () => {},
-    logout: () => {},
+    error: null,
+    logout: async () => {},
   }),
+  StaffSessionProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 // The Next.js app-router context is not mounted under vitest/jsdom.
