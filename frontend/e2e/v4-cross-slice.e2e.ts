@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { signInAsStaff } from "./helpers";
+
 // J5 — v4 cross-slice integration. Catches the class of bug where each
 // slice's own tests pass but the admin pages 5xx / show "Couldn't load …"
 // banners under the real demo Staff session (see PR #129's hotfix).
@@ -11,12 +13,6 @@ import { test, expect, type Page } from "@playwright/test";
 //      fires booking signals, enqueues an outbound message, and the
 //      customer-detail page renders BOTH the Membership card and the
 //      Outbound messages section with that real data.
-
-async function signInAsStaff(page: Page): Promise<void> {
-  await page.goto("/login");
-  await page.getByRole("button", { name: /Staff/ }).click();
-  await expect(page).toHaveURL(/\/admin/);
-}
 
 test("v4 admin pages render under Staff login (no 'Couldn't load' banners)", async ({ page }) => {
   await signInAsStaff(page);
