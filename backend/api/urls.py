@@ -53,6 +53,7 @@ from .views_memberships import (
 )
 from .views_metrics import BusinessMetricsView
 from .views_outbound import OutboundMessageListView
+from .views_public import StoreBrandView
 from .webhooks_twilio import (
     twilio_sms_webhook,
     twilio_voice_status_callback,
@@ -194,6 +195,12 @@ urlpatterns = [
         "admin/outbound/",
         OutboundMessageListView.as_view(),
         name="admin-outbound-list",
+    ),
+    # Public branding signal — consumed by SSR booking + QR pages
+    path(
+        "public/store-brand/",
+        StoreBrandView.as_view(),
+        name="public-store-brand",
     ),
     # Composite business-metrics endpoint backing the /admin dashboard strip
     path(

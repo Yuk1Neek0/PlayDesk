@@ -16,6 +16,7 @@ import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { type QRPublicPayload } from "@/lib/api";
+import { fetchStoreBrand } from "@/lib/store-brand";
 
 import QRLanding from "./QRLanding";
 
@@ -72,8 +73,27 @@ async function loadTierBadge(
 
 export default async function QRPage(props: { params: Promise<Params> }) {
   const params = await props.params;
-  const payload = await loadPayload(params.slug);
+  // Fetch payload (store + actions) and validated brand fields in parallel.
+  // Both target the same store under v5's single-store assumption; v6
+  // multi-location will evolve `fetchStoreBrand(slug)` to take the slug.
+  const [payload, brand] = await Promise.all([loadPayload(params.slug), fetchStoreBrand()]);
   if (!payload) notFound();
+
+  // Overlay the validated brand fields onto the payload. The store-brand
+  // endpoint regex-validates `accent` and returns `null` for malformed
+  // values — preserving previous rendering for any well-formed brand and
+  // narrowing only the edge case of an admin typo making it onto the page.
+  const renderedPayload = {
+    ...payload,
+    store: {
+      ...payload.store,
+      brand: {
+        ...payload.store.brand,
+        ...(brand.logo_url !== null ? { logo_url: brand.logo_url } : {}),
+        ...(brand.accent !== null ? { accent: brand.accent } : {}),
+      },
+    },
+  };
 
   // Identified-visitor tier lookup. The pd_customer cookie carries the
   // integer Customer pk; if it doesn't resolve to a customer for this
@@ -88,5 +108,5 @@ export default async function QRPage(props: { params: Promise<Params> }) {
     }
   }
 
-  return <QRLanding payload={payload} tier={tier} />;
+  return <QRLanding payload={renderedPayload} tier={tier} />;
 }
