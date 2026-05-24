@@ -15,6 +15,10 @@ Faster (30s) is fine if the queue regularly has work waiting.
 - `[outbound] skipped: twilio not configured` — adapter is missing
   `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER`.
   Rows stay `queued`. Expected on CI; investigate in staging/prod.
+  The WhatsApp adapter reads the same SID/token plus its own
+  `TWILIO_WHATSAPP_FROM` (e.g. the Twilio sandbox sender
+  `+14155238886`); missing any of the three keeps rows queued the same
+  way.
 - `[outbound] processed N row(s)` — N = rows handled (sent, cancelled,
   rescheduled). Trend; should track booking volume.
 - Rows with `status='failed'` — query `?status=failed` on the admin API
@@ -83,6 +87,7 @@ loops with `sleep 60` between runs (avoids per-tick container start cost):
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM:-}
     volumes:
       - ./backend:/app
     depends_on:
