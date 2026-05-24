@@ -486,6 +486,16 @@ class AdminBookingListView(ListAPIView):
             day_end = day_start + timedelta(days=1)
             qs = qs.filter(start_time__gte=day_start, start_time__lt=day_end)
 
+        # v10b checkin: optional filter on the check-in dimension. `yes` =
+        # only checked-in bookings, `no` = only confirmed-but-not-yet
+        # bookings. Anything else is silently ignored to keep the
+        # default-list behaviour unchanged for legacy callers.
+        checked_in = params.get("checked_in")
+        if checked_in == "yes":
+            qs = qs.filter(status="checked_in")
+        elif checked_in == "no":
+            qs = qs.filter(status="confirmed", checked_in_at__isnull=True)
+
         return qs
 
 

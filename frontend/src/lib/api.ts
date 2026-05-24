@@ -177,8 +177,19 @@ export function adminListBookings(params?: {
   status?: BookingStatus;
   resource_id?: number;
   date?: string;
+  checked_in?: "yes" | "no";
 }): Promise<PaginatedBookings> {
   return request(`/api/admin/bookings${queryString(params)}`);
+}
+
+// v10b checkin — staff manual override endpoints. Both return the updated
+// Booking row. 400 on a transition that's invalid for the current state.
+export function adminCheckInBooking(id: number): Promise<Booking> {
+  return request(`/api/admin/bookings/${id}/check-in`, { method: "POST" });
+}
+
+export function adminUndoCheckInBooking(id: number): Promise<Booking> {
+  return request(`/api/admin/bookings/${id}/undo-check-in`, { method: "POST" });
 }
 
 // ── Admin: customers (retention) ──────────────────────────────────────────

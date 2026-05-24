@@ -387,6 +387,11 @@ class BookingStatus(models.TextChoices):
     CONFIRMED = "confirmed", "Confirmed"
     CANCELLED = "cancelled", "Cancelled"
     PENDING_PAYMENT = "pending_payment", "Pending Payment"
+    # v10b checkin — sits between CONFIRMED and COMPLETED. The customer
+    # has physically arrived (tapped the /c/<token>/ link or staff
+    # manually flipped them). The `auto_complete_checked_in` sweeper
+    # promotes through to COMPLETED after end_time + grace.
+    CHECKED_IN = "checked_in", "Checked in"
     COMPLETED = "completed", "Completed"
 
 
@@ -458,6 +463,22 @@ class Booking(models.Model):
     )
     deposit_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     payment_intent_id = models.CharField(max_length=128, null=True, blank=True)
+
+    # ----- Check-in (v10b checkin) -----
+    # Short URL-safe token embedded in the booking_confirmation SMS as
+    # `/c/<token>/`. Populated by `BookingCreateSerializer.create` for
+    # new rows; a one-shot data migration backfills existing rows.
+    # `blank=True` because the field is nullable on creation in a
+    # serializer that doesn't go through `BookingCreateSerializer`
+    # (e.g. internal scripts) — those rows get a token before save via
+    # the assignment path or stay empty (no harm; just no /c/ URL).
+    check_in_token = models.CharField(
+        max_length=12, unique=True, db_index=True, blank=True, null=True
+    )
+    # Wall-clock stamp at the moment the customer (or staff) flipped
+    # this booking to CHECKED_IN. The sweeper inspects status, not
+    # this column, but admin badges render this for display.
+    checked_in_at = models.DateTimeField(null=True, blank=True)
 
     @property
     def balance_amount(self) -> Decimal:

@@ -44,6 +44,12 @@ from .views_campaigns import (
     SegmentListCreateView,
     SegmentPreviewView,
 )
+from .views_checkin import (
+    AdminCheckInView,
+    AdminUndoCheckInView,
+    CheckInActionView,
+    CheckInInfoView,
+)
 from .views_customer_auth import LogoutView, RequestCodeView, VerifyCodeView
 from .views_me import (
     MeView,
@@ -295,6 +301,23 @@ urlpatterns = [
         "webhooks/twilio/voice/status/",
         twilio_voice_status_callback,
         name="twilio-voice-status-callback",
+    ),
+    # v10b checkin — public per-booking check-in page + admin overrides.
+    path("c/<str:token>/", CheckInInfoView.as_view(), name="checkin-info"),
+    path(
+        "c/<str:token>/check-in/",
+        CheckInActionView.as_view(),
+        name="checkin-action",
+    ),
+    path(
+        "admin/bookings/<int:pk>/check-in/",
+        AdminCheckInView.as_view(),
+        name="admin-booking-checkin",
+    ),
+    path(
+        "admin/bookings/<int:pk>/undo-check-in/",
+        AdminUndoCheckInView.as_view(),
+        name="admin-booking-undo-checkin",
     ),
 ]
 

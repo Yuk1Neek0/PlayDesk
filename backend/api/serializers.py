@@ -96,6 +96,9 @@ class BookingSerializer(serializers.ModelSerializer):
             "created_at",
             "payment_status",
             "deposit_amount",
+            # v10b checkin — read-only check-in surfacing.
+            "check_in_token",
+            "checked_in_at",
         ]
         read_only_fields = [
             "id",
@@ -105,6 +108,8 @@ class BookingSerializer(serializers.ModelSerializer):
             "refund_amount",
             "payment_status",
             "deposit_amount",
+            "check_in_token",
+            "checked_in_at",
         ]
 
 
@@ -159,6 +164,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         from decimal import ROUND_HALF_UP, Decimal
 
         from core.customers import UnparseablePhoneError, resolve_customer
+        from core.tokens import generate_unique_check_in_token
 
         resource = validated_data["resource"]
         try:
@@ -190,6 +196,12 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
             validated_data["rule_snapshot"] = []
+
+        # v10b checkin: stamp a fresh URL-safe token so the customer
+        # SMS can embed `/c/<token>/`. The unique-retry generator
+        # makes a collision vanishingly unlikely; if it ever fails,
+        # let the RuntimeError bubble up as a 500 so we notice.
+        validated_data["check_in_token"] = generate_unique_check_in_token()
 
         return super().create(validated_data)
 

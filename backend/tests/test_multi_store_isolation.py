@@ -124,6 +124,7 @@ def outbound_rows(customers):
             "store_name": "Store A",
             "start_time": "2026-11-01 18:00",
             "resource_name": "A-PS5",
+            "checkin_url": "http://localhost:3000/c/AAAA2345",
         },
     )
     mb = enqueue_message(
@@ -134,6 +135,7 @@ def outbound_rows(customers):
             "store_name": "Store B",
             "start_time": "2026-11-02 18:00",
             "resource_name": "B-PS5",
+            "checkin_url": "http://localhost:3000/c/BBBB2345",
         },
     )
     return ma, mb
