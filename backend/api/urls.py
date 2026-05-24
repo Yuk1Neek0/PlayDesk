@@ -33,6 +33,7 @@ from .views import (
     ResourceListView,
     stripe_webhook,
 )
+from .views_admin_stores import AdminStoreListView
 from .views_campaigns import (
     CampaignCancelView,
     CampaignDetailView,
@@ -189,6 +190,12 @@ urlpatterns = [
         "admin/campaigns/<int:pk>/runs/",
         CampaignRunsListView.as_view(),
         name="admin-campaign-runs",
+    ),
+    # Admin store switcher
+    path(
+        "admin/stores/",
+        AdminStoreListView.as_view(),
+        name="admin-store-list",
     ),
     # Outbound message log (admin)
     path(
