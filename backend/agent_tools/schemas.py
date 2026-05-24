@@ -81,6 +81,9 @@ class CheckAvailabilityInput(BaseModel):
         description="Requested start and end time as (HH:MM, HH:MM) in store local time.",
     )
     party_size: int = Field(..., ge=1, description="Number of people in the party.")
+    # Injected by the agent loop from ``conversation.store_id``; stripped
+    # from the LLM-facing manifest so the model can't override it.
+    store_id: int | None = None
 
 
 class CheckAvailabilityOutput(BaseModel):
@@ -102,6 +105,7 @@ class GetResourceDetailsInput(BaseModel):
     resource_type: Literal["console", "room", "table"] | None = Field(
         None, description="Filter by type; omit to return all."
     )
+    store_id: int | None = None
 
 
 class ResourceDetail(BaseModel):
@@ -129,6 +133,7 @@ class CreateBookingInput(BaseModel):
     duration_minutes: int = Field(..., ge=30, description="Booking duration in minutes.")
     customer_name: str
     customer_phone: str
+    store_id: int | None = None
 
 
 class CreateBookingSuccess(BaseModel):
@@ -155,6 +160,7 @@ class ModifyBookingInput(BaseModel):
     booking_id: int
     new_start_time: datetime
     new_duration_minutes: int = Field(..., ge=30)
+    store_id: int | None = None
 
 
 class ModifyBookingOutput(BaseModel):
@@ -172,6 +178,7 @@ class ModifyBookingOutput(BaseModel):
 
 class CancelBookingInput(BaseModel):
     booking_id: int
+    store_id: int | None = None
 
 
 class CancelBookingOutput(BaseModel):

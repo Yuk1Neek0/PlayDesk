@@ -36,11 +36,13 @@ def _make_text_response(text: str) -> LLMResponse:
 
 @pytest.fixture()
 def conversation(db):
-    from core.models import Conversation, ConversationStatus
+    from core.models import Conversation, ConversationStatus, Store
 
+    store = Store.objects.create(name="Test Store", timezone="UTC", business_hours={})
     return Conversation.objects.create(
         customer_identifier="test-user",
         status=ConversationStatus.ACTIVE,
+        store=store,
     )
 
 

@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from core.models import Conversation
+from core.models import Conversation, Store
+
+
+@pytest.fixture(autouse=True)
+def _seed_store(db):
+    """Conversation requires a Store; seed one so the save-fallback resolves."""
+    Store.objects.get_or_create(
+        name="Default Store", defaults={"timezone": "UTC", "business_hours": {}}
+    )
 
 
 @pytest.mark.django_db(transaction=True)

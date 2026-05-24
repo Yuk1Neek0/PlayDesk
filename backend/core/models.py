@@ -280,6 +280,17 @@ class ConversationChannel(models.TextChoices):
 
 
 class Conversation(models.Model):
+    # `store` is the multi-location anchor that the agent loop uses to scope
+    # tool calls. Backfilled in migration 0012 from the customer-phone
+    # lookup (with the alphabetically-first store as the last-resort
+    # default). New rows must populate it explicitly via the inbound
+    # webhooks / API; the field becomes non-null at the end of the data
+    # migration.
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.PROTECT,
+        related_name="conversations",
+    )
     customer_identifier = models.CharField(max_length=255)
     started_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(
@@ -295,6 +306,21 @@ class Conversation(models.Model):
 
     class Meta:
         ordering = ["-started_at"]
+
+    def save(self, *args, **kwargs):
+        """Auto-fill ``store`` from the alphabetically-first Store when omitted.
+
+        This preserves the single-store deployment ergonomics: legacy
+        call-sites (tests, evals) that create Conversations without an
+        explicit store keep working as long as at least one Store row
+        exists, which mirrors the ``CurrentStoreMiddleware`` fallback.
+        New multi-store code paths should set ``store`` explicitly.
+        """
+        if self.store_id is None:
+            default = type(self).store.field.related_model.objects.order_by("slug").first()
+            if default is not None:
+                self.store_id = default.pk
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"Conversation {self.pk} ({self.customer_identifier})"

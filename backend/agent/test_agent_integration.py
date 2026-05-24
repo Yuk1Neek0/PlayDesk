@@ -25,21 +25,29 @@ from agent.prompt import SYSTEM_PROMPT
 
 
 @pytest.fixture()
-def conversation(db):
+def store(db):
+    """Single shared Store so conversation + bookable resource land on it."""
+    from core.models import Store
+
+    return Store.objects.create(name="PlayDesk Test Lounge", timezone="UTC", business_hours={})
+
+
+@pytest.fixture()
+def conversation(store):
     from core.models import Conversation, ConversationStatus
 
     return Conversation.objects.create(
         customer_identifier="integration-test",
         status=ConversationStatus.ACTIVE,
+        store=store,
     )
 
 
 @pytest.fixture()
-def booking_resource(db):
+def booking_resource(store):
     """A bookable PS5 console resource for the booking-scenario tests."""
-    from core.models import Resource, Store
+    from core.models import Resource
 
-    store = Store.objects.create(name="PlayDesk Test Lounge", timezone="UTC", business_hours={})
     return Resource.objects.create(
         store=store,
         type="console",

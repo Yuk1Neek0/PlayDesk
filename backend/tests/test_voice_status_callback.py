@@ -12,7 +12,7 @@ import pytest
 from django.urls import reverse
 from twilio.request_validator import RequestValidator
 
-from core.models import Conversation
+from core.models import Conversation, Store
 
 CALLBACK_URL = reverse("api:twilio-voice-status-callback")
 
@@ -24,6 +24,14 @@ def _sign(url: str, params: dict, token: str) -> str:
 @pytest.fixture()
 def absolute_url() -> str:
     return f"http://testserver{CALLBACK_URL}"
+
+
+@pytest.fixture(autouse=True)
+def _seed_store(db):
+    """Ensure a Store exists so Conversation.save's fallback resolves."""
+    Store.objects.get_or_create(
+        name="Default Store", defaults={"timezone": "UTC", "business_hours": {}}
+    )
 
 
 @pytest.mark.django_db(transaction=True)

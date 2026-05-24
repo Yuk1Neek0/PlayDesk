@@ -134,6 +134,7 @@ def create_conversation(request: HttpRequest) -> JsonResponse:
     conversation = Conversation.objects.create(
         customer_identifier=str(customer_identifier),
         status=ConversationStatus.ACTIVE,
+        store=request.store,
     )
     return JsonResponse(
         {

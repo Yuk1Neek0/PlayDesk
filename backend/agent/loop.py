@@ -50,12 +50,33 @@ _PARALLEL_SAFE_TOOLS = {
     "get_resource_details",
 }
 
+# Tools that take an implicit ``store_id`` injected by the agent loop from
+# ``conversation.store_id``. The field is stripped from the LLM-facing
+# manifest so the model can't pick a store; the loop sets it just before
+# tool dispatch.
+_STORE_SCOPED_TOOLS = frozenset(
+    {
+        "check_availability",
+        "get_resource_details",
+        "create_booking",
+        "modify_booking",
+        "cancel_booking",
+    }
+)
+
 
 def _build_tool_manifest() -> list[dict[str, Any]]:
     """Convert the tool registry into the Anthropic tool-use manifest format."""
     manifest: list[dict[str, Any]] = []
     for entry in all_tools().values():
         schema = entry.input_schema.model_json_schema()
+        # ``store_id`` is an internal field set by the loop, not a knob for
+        # the LLM. Strip it from the published manifest so the model can't
+        # try to override the conversation's store.
+        props = schema.get("properties", {})
+        if "store_id" in props:
+            props = {k: v for k, v in props.items() if k != "store_id"}
+            schema = {**schema, "properties": props}
         # Anthropic requires "input_schema" not "parameters"
         manifest.append(
             {
@@ -313,9 +334,15 @@ class AgentLoop:
             # Bilingual retrieval: pin search_knowledge_base to the detected
             # language so a Chinese question hits lang="zh" KB chunks,
             # regardless of what the model passed for `lang`.
+            # Multi-location: inject the conversation's store_id into every
+            # store-scoped tool call so tools can filter by it. The LLM
+            # never sees this field (it's stripped from the manifest).
+            conv_store_id = getattr(conversation, "store_id", None)
             for tc in response.tool_calls:
                 if tc.tool_name == "search_knowledge_base":
                     tc.arguments["lang"] = lang
+                if tc.tool_name in _STORE_SCOPED_TOOLS and conv_store_id is not None:
+                    tc.arguments["store_id"] = conv_store_id
 
             # Persist assistant turn with tool calls in tool_call_data
             tool_call_content = [

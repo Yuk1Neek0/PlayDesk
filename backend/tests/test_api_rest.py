@@ -392,6 +392,15 @@ class TestBookingDetail:
 
 
 class TestConversations:
+    @pytest.fixture(autouse=True)
+    def _seed_store(self, db):
+        """Conversation requires a Store; seed one so save's fallback resolves."""
+        from core.models import Store
+
+        Store.objects.get_or_create(
+            name="Default Store", defaults={"timezone": "UTC", "business_hours": {}}
+        )
+
     def test_create_conversation(self, api_client):
         url = reverse("api:conversation-create")
         resp = api_client.post(url, {"customer_identifier": "browser-uuid-1234"}, format="json")
@@ -431,6 +440,14 @@ class TestConversations:
 
 
 class TestAdminConversations:
+    @pytest.fixture(autouse=True)
+    def _seed_store(self, db):
+        from core.models import Store
+
+        Store.objects.get_or_create(
+            name="Default Store", defaults={"timezone": "UTC", "business_hours": {}}
+        )
+
     def test_admin_list_conversations(self, api_client):
         from core.models import Conversation
 

@@ -335,7 +335,10 @@ class ConversationCreateView(APIView):
         customer_identifier = serializer.validated_data.get("customer_identifier") or str(
             uuid.uuid4()
         )
-        conversation = Conversation.objects.create(customer_identifier=customer_identifier)
+        conversation = Conversation.objects.create(
+            customer_identifier=customer_identifier,
+            store=request.store,
+        )
         return Response(ConversationSerializer(conversation).data, status=status.HTTP_201_CREATED)
 
 
