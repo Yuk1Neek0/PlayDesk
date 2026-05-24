@@ -103,24 +103,33 @@ class RequestCodeView(APIView):
         except Store.DoesNotExist:
             return Response({"detail": "Unknown store."}, status=status.HTTP_404_NOT_FOUND)
 
+        # Test-mode bypass: DEBUG-only flag for e2e tests that need to
+        # capture the OTP without a real SMS sink. Bypasses rate limits
+        # so the test can drive the same phone repeatedly. Production
+        # cannot trigger this path because DEBUG=False.
+        test_mode = settings.DEBUG and bool(
+            request.query_params.get("test_mode") or request.GET.get("test_mode")
+        )
+
         # Per-phone+store rate limits. cache.add returns False when the
         # key already exists, so the first request seeds it and a second
         # within the window bounces.
-        key_minute = f"otp:req:{store.id}:{phone}:1m"
-        key_hour = f"otp:req:{store.id}:{phone}:1h"
-        if not cache.add(key_minute, 1, timeout=60):
-            return Response(
-                {"detail": "Too many requests. Please wait 60 seconds."},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
-        # Hourly count via incr — defaults to 1 on first call.
-        hour_count = cache.get(key_hour, 0)
-        if hour_count >= RATE_LIMIT_PER_HOUR:
-            return Response(
-                {"detail": "Too many requests. Please try again later."},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
-        cache.set(key_hour, hour_count + 1, timeout=3600)
+        if not test_mode:
+            key_minute = f"otp:req:{store.id}:{phone}:1m"
+            key_hour = f"otp:req:{store.id}:{phone}:1h"
+            if not cache.add(key_minute, 1, timeout=60):
+                return Response(
+                    {"detail": "Too many requests. Please wait 60 seconds."},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            # Hourly count via incr — defaults to 1 on first call.
+            hour_count = cache.get(key_hour, 0)
+            if hour_count >= RATE_LIMIT_PER_HOUR:
+                return Response(
+                    {"detail": "Too many requests. Please try again later."},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            cache.set(key_hour, hour_count + 1, timeout=3600)
 
         # Invalidate any prior un-used OTP for this phone+store.
         CustomerOTP.objects.filter(phone=phone, store=store, used_at__isnull=True).update(
@@ -153,12 +162,7 @@ class RequestCodeView(APIView):
             )
 
         payload = {"request_id": otp.id}
-        # Test-mode hatch: surface the code so e2e tests can complete the
-        # flow without a real SMS sink. Gated on DEBUG so production
-        # never leaks the code regardless of query params.
-        if settings.DEBUG and (
-            request.query_params.get("test_mode") or request.GET.get("test_mode")
-        ):
+        if test_mode:
             payload["code"] = otp.code
         return Response(payload, status=status.HTTP_201_CREATED)
 
