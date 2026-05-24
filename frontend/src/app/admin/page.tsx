@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/lib/auth";
+import { useCurrentStore } from "@/lib/store-context";
 import { BusinessDashboardStrip } from "@/components/admin/business-dashboard-strip";
 import {
   Icon,
@@ -69,12 +70,21 @@ export default function AdminPage() {
     if (authReady && user?.role !== "staff") router.replace("/login");
   }, [authReady, user, router]);
 
+  // Current store from the v6 multi-location switcher. `current?.slug` is
+  // in every fetch effect's dep array so a store switch triggers refetch.
+  const { current } = useCurrentStore();
+  const storeSlug = current?.slug ?? null;
+
   // Booking ids seen on the last load — used to flag freshly arrived rows.
   const bookingIdsRef = useRef<Set<number>>(new Set());
 
   // Initial load: resources, bookings, and conversations together.
+  // Re-runs when the active store changes so the dashboard reflects the
+  // new store's data instead of mixing rows across stores.
   useEffect(() => {
     let cancelled = false;
+    setLoadState("loading");
+    bookingIdsRef.current = new Set();
     Promise.all([listResources(), adminListBookings(), adminListConversations()])
       .then(([res, bk, cv]) => {
         if (cancelled) return;
@@ -91,9 +101,11 @@ export default function AdminPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [storeSlug]);
 
   // Live updates: tick the "updated Xs ago" label and poll the bookings list.
+  // Re-creating the poll on store-switch ensures the polled list scopes to
+  // the new store via the X-PD-Store-Slug header.
   useEffect(() => {
     const ticker = setInterval(() => setUpdatedAgo((s) => s + 5), 5_000);
     const poll = setInterval(() => {
@@ -118,7 +130,7 @@ export default function AdminPage() {
       clearInterval(ticker);
       clearInterval(poll);
     };
-  }, []);
+  }, [storeSlug]);
 
   // Re-fetch conversations whenever the channel filter changes. Skipped
   // on first mount because the initial Promise.all already loaded them.
@@ -146,8 +158,9 @@ export default function AdminPage() {
       cancelled = true;
     };
     // selectedConv intentionally omitted — we only want re-fetch on filter change.
+    // storeSlug included so a store switch refetches with the new scope.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelFilter]);
+  }, [channelFilter, storeSlug]);
 
   // Load the selected conversation's transcript for the preview panel.
   useEffect(() => {

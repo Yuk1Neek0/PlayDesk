@@ -28,6 +28,7 @@ import {
   type QRAnalytics,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCurrentStore } from "@/lib/store-context";
 
 const KINDS: { value: QRActionKind; label: string }[] = [
   { value: "review", label: "Google review" },
@@ -56,12 +57,26 @@ export default function AdminQRPage() {
     if (authReady && user?.role !== "staff") router.replace("/login");
   }, [authReady, user, router]);
 
-  // Bootstrap: resolve the store id (and slug for the "Preview" button) by
-  // looking at the first resource. The Store endpoint isn't exposed, so this
-  // works for the demo's single-store setup without adding new routes.
+  // v6 multi-location: prefer the active store from <StoreProvider>; fall
+  // back to deriving the store id from the first resource for single-store
+  // deployments where the switcher is hidden.
+  const { current } = useCurrentStore();
+  const currentSlug = current?.slug ?? null;
+  const currentStoreId = current?.id ?? null;
+
+  // Bootstrap: resolve the store id (and slug for the "Preview" button).
+  // When the multi-location switcher is mounted we know both directly;
+  // otherwise we fall back to the v3 single-store derive-from-resource path.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    if (currentStoreId !== null) {
+      setStoreId(currentStoreId);
+      setStoreSlug(currentSlug);
+      return () => {
+        cancelled = true;
+      };
+    }
     listResources()
       .then(async (page) => {
         if (cancelled) return;
@@ -85,7 +100,7 @@ export default function AdminQRPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentStoreId, currentSlug]);
 
   const refreshActions = useCallback(async (id: number) => {
     const next = await adminListQRActions(id);

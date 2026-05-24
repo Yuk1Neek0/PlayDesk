@@ -21,6 +21,7 @@ import {
   type PointSource,
   type PointTransaction,
 } from "@/lib/api";
+import { useCurrentStore } from "@/lib/store-context";
 
 const SOURCE_LABEL: Record<PointSource, string> = {
   booking: "Booking",
@@ -41,6 +42,11 @@ export default function MembershipSection({ customerId }: Props) {
   const [showAdjust, setShowAdjust] = useState(false);
   const [showRedeem, setShowRedeem] = useState(false);
 
+  // v6 multi-location: refetch on store switch — same rationale as
+  // OutboundMessagesSection.
+  const { current } = useCurrentStore();
+  const storeSlug = current?.slug ?? null;
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(false);
@@ -52,7 +58,9 @@ export default function MembershipSection({ customerId }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [customerId]);
+    // storeSlug included so a store switch triggers refetch with the new scope.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId, storeSlug]);
 
   useEffect(() => {
     void refresh();

@@ -16,6 +16,7 @@ import {
   type Reward,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCurrentStore } from "@/lib/store-context";
 
 interface DraftReward {
   id: number | null; // null = new
@@ -48,9 +49,19 @@ export default function AdminRewardsPage() {
     if (authReady && user?.role !== "staff") router.replace("/login");
   }, [authReady, user, router]);
 
-  // Resolve the store id from the first resource (matches /admin/qr).
+  // v6 multi-location: prefer the active store from <StoreProvider>;
+  // fall back to first-resource derivation for single-store deployments.
+  const { current } = useCurrentStore();
+  const currentStoreId = current?.id ?? null;
+
   useEffect(() => {
     let cancelled = false;
+    if (currentStoreId !== null) {
+      setStoreId(currentStoreId);
+      return () => {
+        cancelled = true;
+      };
+    }
     listResources()
       .then((page) => {
         if (cancelled) return;
@@ -71,7 +82,7 @@ export default function AdminRewardsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentStoreId]);
 
   const refresh = useCallback(async (sid: number) => {
     const list = await adminListRewards(sid);

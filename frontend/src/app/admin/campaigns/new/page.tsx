@@ -27,6 +27,7 @@ import {
   type SegmentPreview,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCurrentStore } from "@/lib/store-context";
 
 type ScheduleMode = "now" | "later";
 
@@ -58,9 +59,21 @@ export default function NewCampaignPage() {
     [segments, pickedSegmentId],
   );
 
-  // Bootstrap store + segments list.
+  // v6 multi-location: prefer the active store from <StoreProvider>;
+  // fall back to deriving from the first resource for single-store deployments.
+  const { current } = useCurrentStore();
+  const currentStoreId = current?.id ?? null;
+  const currentName = current?.name ?? null;
+
   useEffect(() => {
     let cancelled = false;
+    if (currentStoreId !== null) {
+      setStoreId(currentStoreId);
+      if (currentName) setStoreName(currentName);
+      return () => {
+        cancelled = true;
+      };
+    }
     listResources()
       .then((page) => {
         if (cancelled) return;
@@ -74,7 +87,7 @@ export default function NewCampaignPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentStoreId, currentName]);
 
   useEffect(() => {
     if (storeId === null) return;

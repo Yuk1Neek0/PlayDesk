@@ -17,6 +17,7 @@ import {
   type CampaignStatus,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCurrentStore } from "@/lib/store-context";
 
 const STATUS_TONE: Record<CampaignStatus, string> = {
   draft: "pd-badge--muted",
@@ -46,8 +47,19 @@ export default function AdminCampaignsPage() {
     if (authReady && user?.role !== "staff") router.replace("/login");
   }, [authReady, user, router]);
 
+  // v6 multi-location: prefer the active store from <StoreProvider>;
+  // fall back to deriving from the first resource for single-store deployments.
+  const { current } = useCurrentStore();
+  const currentStoreId = current?.id ?? null;
+
   useEffect(() => {
     let cancelled = false;
+    if (currentStoreId !== null) {
+      setStoreId(currentStoreId);
+      return () => {
+        cancelled = true;
+      };
+    }
     listResources()
       .then((page) => {
         if (cancelled) return;
@@ -68,7 +80,7 @@ export default function AdminCampaignsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentStoreId]);
 
   useEffect(() => {
     if (storeId === null) return;
