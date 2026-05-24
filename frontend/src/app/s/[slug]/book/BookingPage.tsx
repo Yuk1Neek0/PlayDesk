@@ -16,6 +16,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Ref } from "react";
 import Link from "next/link";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import type { Stripe, StripeElements } from "@stripe/stripe-js";
 
 import { Icon, ResourceArt, RESOURCE_TYPE_LABEL, fmtFullDate, isoDate } from "@/components/pd-ui";
 import { HOURS, type Resource, type ResourceMeta, type ResourceType } from "@/lib/pd-data";
@@ -30,9 +32,24 @@ import {
 } from "@/lib/api";
 import { customerFetch } from "@/lib/customer-fetch";
 import { isoAt, pad, storeToday, toSlotData, type SlotData } from "@/lib/booking-availability";
+import { loadStripeFromKey } from "@/lib/stripe";
 import type { StoreBrand } from "@/lib/store-brand";
 
-type ConfirmState = "idle" | "loading" | "success" | "error";
+// v9.1 — augmented booking-create response. When a deposit is required the
+// backend's _maybe_open_deposit merges these fields into the BookingSerializer
+// payload. When deposit_mode=none they're absent and the booking is already
+// confirmed.
+interface PaymentInitFields {
+  requires_payment?: boolean;
+  deposit_amount?: string;
+  client_secret?: string | null;
+  publishable_key?: string;
+  configured?: boolean;
+  error?: string;
+}
+type BookingCreateResponse = Booking & PaymentInitFields;
+
+type ConfirmState = "idle" | "loading" | "payment" | "success" | "error";
 type StepFilter = "all" | ResourceType;
 
 interface ConfirmedBooking {
@@ -80,11 +97,24 @@ function getAvailabilityScoped(
   );
 }
 
-function createBookingScoped(slug: string, body: BookingCreate): Promise<Booking> {
-  return customerFetch<Booking>(slug, withTrailingSlash("/api/bookings"), {
+function createBookingScoped(slug: string, body: BookingCreate): Promise<BookingCreateResponse> {
+  return customerFetch<BookingCreateResponse>(slug, withTrailingSlash("/api/bookings"), {
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+// v9.1 — payment-status poll. Public endpoint (no auth), returns the
+// booking's current payment_status + status. Polled after Stripe confirms
+// the PaymentIntent so the UI can react when the webhook flips the row.
+async function fetchPaymentStatusScoped(
+  slug: string,
+  bookingId: number,
+): Promise<{ payment_status: string; status: string }> {
+  return customerFetch(
+    slug,
+    withTrailingSlash(`/api/bookings/${bookingId}/payment-status`),
+  );
 }
 
 // v8 pricing-rules: live quote for the selected (resource, slot, duration).
@@ -154,6 +184,15 @@ export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
   // v8 pricing-rules — live quote for the current (resource, slot, duration).
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [quoteChanged, setQuoteChanged] = useState(false);
+  // v9.1 — when the backend requires a deposit, the booking-create response
+  // carries the PaymentIntent client_secret + publishable_key. We hold them
+  // here while the customer completes the Stripe Elements step.
+  const [pendingPayment, setPendingPayment] = useState<{
+    bookingId: number;
+    clientSecret: string;
+    publishableKey: string;
+    depositAmount: string;
+  } | null>(null);
 
   // Load the resource catalogue from the API once.
   useEffect(() => {
@@ -269,6 +308,38 @@ export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
 
     createBookingScoped(storeSlug, body)
       .then((booking) => {
+        // v9.1: deposit-required path. The backend created a PaymentIntent
+        // and returned a client_secret; render Stripe Elements next.
+        // configured=false means dev/test stub — skip Stripe and confirm
+        // directly (the Payment row is already created as a test stub).
+        const wantsPayment =
+          booking.requires_payment === true &&
+          booking.client_secret &&
+          booking.publishable_key;
+        if (wantsPayment) {
+          setPendingPayment({
+            bookingId: booking.id,
+            clientSecret: booking.client_secret as string,
+            publishableKey: booking.publishable_key as string,
+            depositAmount: booking.deposit_amount ?? "0.00",
+          });
+          setConfirmedBooking({
+            id: booking.id,
+            resource,
+            date,
+            slot,
+            end: `${pad((startHour + duration) % 24)}:00`,
+            duration,
+            name,
+            phone,
+            total: quote
+              ? quote.total_amount
+              : (parseFloat(resource.price_per_hour) * duration).toFixed(0),
+          });
+          setConfirmState("payment");
+          return;
+        }
+
         setConfirmedBooking({
           id: booking.id,
           resource,
@@ -332,6 +403,18 @@ export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
     }
     return arr;
   }, []);
+
+  if (confirmState === "payment" && confirmedBooking && pendingPayment) {
+    return (
+      <PaymentView
+        booking={confirmedBooking}
+        pending={pendingPayment}
+        storeSlug={storeSlug}
+        onPaid={() => setConfirmState("success")}
+        onCancel={reset}
+      />
+    );
+  }
 
   if (confirmState === "success" && confirmedBooking) {
     return <ConfirmationView booking={confirmedBooking} onReset={reset} />;
@@ -806,6 +889,178 @@ function ConfirmationView({
           A confirmation SMS will arrive at {booking.phone} momentarily.
         </p>
       </div>
+    </div>
+  );
+}
+
+// v9.1 — Stripe payment step. Renders Elements with the PaymentIntent
+// client_secret from the booking-create response. After the customer
+// confirms, polls `/api/bookings/{id}/payment-status/` until the webhook
+// flips `payment_status` to `deposit_paid` (or 30s timeout).
+function PaymentView({
+  booking,
+  pending,
+  storeSlug,
+  onPaid,
+  onCancel,
+}: {
+  booking: ConfirmedBooking;
+  pending: {
+    bookingId: number;
+    clientSecret: string;
+    publishableKey: string;
+    depositAmount: string;
+  };
+  storeSlug: string;
+  onPaid: () => void;
+  onCancel: () => void;
+}) {
+  const stripePromise = useMemo(
+    () => loadStripeFromKey(pending.publishableKey),
+    [pending.publishableKey],
+  );
+
+  if (!stripePromise) {
+    return (
+      <div className="pd-page pd-confirmed">
+        <div className="pd-confirmed-card">
+          <div className="pd-eyebrow">Payment unavailable</div>
+          <h1 className="pd-confirmed-title">We couldn&apos;t reach Stripe.</h1>
+          <p className="pd-fine">
+            Your booking <span className="pd-mono">#{booking.id}</span> is on hold.
+            Please contact staff to complete the deposit, or start over.
+          </p>
+          <div className="pd-confirmed-actions">
+            <button className="pd-btn pd-btn--ghost" onClick={onCancel}>
+              Start over
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pd-page pd-confirmed">
+      <div className="pd-confirmed-card">
+        <div className="pd-eyebrow pd-eyebrow--accent">Pay deposit to confirm</div>
+        <h1 className="pd-confirmed-title">
+          Hold your slot — ¥{pending.depositAmount}
+        </h1>
+        <p className="pd-fine">
+          Booking <span className="pd-mono">#{booking.id}</span> · {booking.resource.name}
+          {" · "}
+          {fmtFullDate(booking.date)} · {booking.slot} – {booking.end}
+        </p>
+        <Elements
+          stripe={stripePromise}
+          options={{ clientSecret: pending.clientSecret, appearance: { theme: "stripe" } }}
+        >
+          <PaymentForm
+            bookingId={pending.bookingId}
+            storeSlug={storeSlug}
+            onPaid={onPaid}
+            onCancel={onCancel}
+          />
+        </Elements>
+      </div>
+    </div>
+  );
+}
+
+function PaymentForm({
+  bookingId,
+  storeSlug,
+  onPaid,
+  onCancel,
+}: {
+  bookingId: number;
+  storeSlug: string;
+  onPaid: () => void;
+  onCancel: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [submitting, setSubmitting] = useState(false);
+  const [polling, setPolling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handlePay(s: Stripe, e: StripeElements) {
+    setSubmitting(true);
+    setError(null);
+    const result = await s.confirmPayment({
+      elements: e,
+      redirect: "if_required",
+      confirmParams: {
+        return_url: window.location.href,
+      },
+    });
+    if (result.error) {
+      setSubmitting(false);
+      setError(result.error.message ?? "Payment failed. Try a different card.");
+      return;
+    }
+    // PaymentIntent has succeeded client-side. The Stripe webhook will
+    // flip the booking row's payment_status; poll until we see it.
+    setSubmitting(false);
+    setPolling(true);
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      try {
+        const { payment_status } = await fetchPaymentStatusScoped(storeSlug, bookingId);
+        if (payment_status === "deposit_paid" || payment_status === "paid_in_full") {
+          onPaid();
+          return;
+        }
+      } catch {
+        // transient — keep polling
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    // Timeout: webhook hasn't arrived. The PaymentIntent succeeded
+    // though, so the booking will flip eventually. Surface gracefully.
+    setPolling(false);
+    setError(
+      "Payment confirmed but we're still syncing — please refresh in a moment, or contact staff.",
+    );
+  }
+
+  return (
+    <div className="pd-form" style={{ marginTop: 16 }}>
+      <PaymentElement />
+      {error && (
+        <div className="pd-error" style={{ marginTop: 12 }}>
+          <span className="pd-error-dot" /> {error}
+        </div>
+      )}
+      <button
+        className="pd-btn pd-btn--primary pd-btn--lg"
+        disabled={!stripe || !elements || submitting || polling}
+        onClick={() => {
+          if (stripe && elements) handlePay(stripe, elements);
+        }}
+        style={{ marginTop: 16 }}
+      >
+        {submitting ? (
+          <>
+            <span className="pd-spinner" /> Authorising…
+          </>
+        ) : polling ? (
+          <>
+            <span className="pd-spinner" /> Confirming payment…
+          </>
+        ) : (
+          <>Pay deposit</>
+        )}
+      </button>
+      <button
+        className="pd-btn pd-btn--ghost"
+        onClick={onCancel}
+        disabled={submitting || polling}
+        style={{ marginTop: 8 }}
+      >
+        Cancel
+      </button>
     </div>
   );
 }

@@ -881,12 +881,15 @@ def _maybe_open_deposit(booking):
     import logging
     from decimal import Decimal
 
+    from django.conf import settings
+
     from billing import stripe_client
     from billing.helpers import calc_deposit
     from billing.models import Payment, PaymentKind, PaymentRowStatus
     from core.models import BookingStatus, PaymentStatus
 
     log = logging.getLogger(__name__)
+    publishable_key = settings.STRIPE_PUBLISHABLE_KEY or ""
 
     resource = booking.resource
     store = resource.store
@@ -925,6 +928,7 @@ def _maybe_open_deposit(booking):
             "requires_payment": True,
             "deposit_amount": str(deposit),
             "client_secret": None,
+            "publishable_key": publishable_key,
             "configured": False,
         }
 
@@ -947,6 +951,7 @@ def _maybe_open_deposit(booking):
             "requires_payment": True,
             "deposit_amount": str(deposit),
             "client_secret": None,
+            "publishable_key": publishable_key,
             "error": "stripe_unavailable",
         }
 
@@ -967,6 +972,7 @@ def _maybe_open_deposit(booking):
         "requires_payment": True,
         "deposit_amount": str(deposit),
         "client_secret": getattr(intent, "client_secret", None),
+        "publishable_key": publishable_key,
     }
 
 

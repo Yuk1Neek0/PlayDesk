@@ -74,9 +74,12 @@ async function loadTierBadge(
 export default async function QRPage(props: { params: Promise<Params> }) {
   const params = await props.params;
   // Fetch payload (store + actions) and validated brand fields in parallel.
-  // Both target the same store under v5's single-store assumption; v6
-  // multi-location will evolve `fetchStoreBrand(slug)` to take the slug.
-  const [payload, brand] = await Promise.all([loadPayload(params.slug), fetchStoreBrand()]);
+  // Brand fetch is scoped to the URL slug so North's QR page doesn't render
+  // Flagship's brand overlay (v6 multi-location follow-on).
+  const [payload, brand] = await Promise.all([
+    loadPayload(params.slug),
+    fetchStoreBrand(params.slug),
+  ]);
   if (!payload) notFound();
 
   // Overlay the validated brand fields onto the payload. The store-brand

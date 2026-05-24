@@ -227,8 +227,32 @@ class MyBookingRescheduleView(APIView):
         date_old = booking.start_time.strftime("%Y-%m-%d %H:%M")
         booking.start_time = start_at
         booking.end_time = end_at
+
+        # v8 pricing-rules: a reschedule moves the booking to potentially
+        # different peak/off-peak rates, so re-freeze the quote on the row.
+        # Mirrors the BookingCreateSerializer pattern — defence-in-depth
+        # fallback to price_per_hour * hours if the engine isn't importable.
+        from decimal import ROUND_HALF_UP, Decimal
+
+        update_fields = ["start_time", "end_time"]
         try:
-            booking.save(update_fields=["start_time", "end_time"])
+            from pricing.engine import compute_quote
+
+            quote = compute_quote(booking.resource, start_at, end_at, customer=request.customer)
+            booking.total_amount = quote.total_amount
+            booking.rule_snapshot = [li.to_dict() for li in quote.line_items]
+            update_fields += ["total_amount", "rule_snapshot"]
+        except Exception:
+            seconds = int((end_at - start_at).total_seconds())
+            hours = (Decimal(seconds) / Decimal(3600)).quantize(Decimal("0.0001"))
+            booking.total_amount = (booking.resource.price_per_hour * hours).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            booking.rule_snapshot = []
+            update_fields += ["total_amount", "rule_snapshot"]
+
+        try:
+            booking.save(update_fields=update_fields)
         except IntegrityError:
             return Response(
                 {
