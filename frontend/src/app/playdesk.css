@@ -8,14 +8,18 @@
    not ported. Fonts are wired to next/font variables in layout.tsx. */
 
 :root {
-  /* surfaces */
-  --bg: #0a0b0e;
-  --bg-2: #0d0f13;
-  --surface: #14161c;
-  --surface-2: #181b22;
-  --raised: #1d2129;
-  --hairline: rgba(255, 255, 255, 0.06);
-  --hairline-2: rgba(255, 255, 255, 0.12);
+  /* surfaces — Phase 2 editorial palette. Near-black base shifted 4–6
+     points toward warm bistro brown (red hue dominates green/blue by
+     about 0x05). The old cold-slate values: 0a/0b/0e, 14/16/1c, 18/1b/22.
+     Net effect: surfaces still read as "dark" but pick up a warm hue,
+     bar-like instead of arcade-like. */
+  --bg: #0d0a08;
+  --bg-2: #100d0b;
+  --surface: #1a1613;
+  --surface-2: #1f1b17;
+  --raised: #25201c;
+  --hairline: rgba(255, 235, 215, 0.07);
+  --hairline-2: rgba(255, 235, 215, 0.14);
 
   /* text */
   --text: #eef0f4;
@@ -42,10 +46,17 @@
   --accent: oklch(0.78 0.16 200);
   --accent-soft: oklch(0.78 0.16 200 / .14);
   --accent-border: oklch(0.78 0.16 200 / .35);
-  --accent-glow: 0 0 24px -2px oklch(0.78 0.16 200 / .45);
+  /* Glow halo for the ONE true primary on a screen. Phase 2: derived
+     from --accent rather than hardcoded cyan, so per-store brand colors
+     glow in their own hue rather than the default cyan. */
+  --accent-glow: 0 0 24px -2px oklch(from var(--accent) l c h / .45);
 
-  /* type — families resolved from next/font variables (see layout.tsx) */
+  /* type — families resolved from next/font variables (see layout.tsx).
+     --font-display-serif is the Phase 2 editorial serif (Newsreader),
+     reserved for .pd-page-title + .pd-confirmed-title only. Body stays
+     Inter; numerics + section headings stay Space Grotesk. */
   --font-display: var(--font-space-grotesk), system-ui, sans-serif;
+  --font-display-serif: var(--font-newsreader), Georgia, "Times New Roman", serif;
   --font-body: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
@@ -65,7 +76,7 @@
   --fs-display: clamp(38px, 5.2vw, 60px);
   --fs-title: 32px;
   --fs-heading: 19px;
-  --fs-body: 14.5px;
+  --fs-body: 15.5px;
   --fs-micro: 11px;
   --lh-display: 1.02;
   --lh-title: 1.08;
@@ -130,7 +141,6 @@ body {
   width: 32px; height: 32px; border-radius: 8px;
   background: var(--accent-soft); color: var(--accent);
   border: 1px solid var(--accent-border);
-  box-shadow: var(--accent-glow);
   align-self: center;
 }
 .pd-brand-name { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.01em; font-size: 18px; }
@@ -144,7 +154,7 @@ body {
 }
 .pd-nav-link:hover { color: var(--text); background: var(--hairline); }
 .pd-nav-link.is-active { color: var(--text); background: var(--surface); }
-.pd-nav-link-underline { position: absolute; left: 14px; right: 14px; bottom: 4px; height: 2px; border-radius: 2px; background: var(--accent); box-shadow: var(--accent-glow); }
+.pd-nav-link-underline { position: absolute; left: 14px; right: 14px; bottom: 4px; height: 2px; border-radius: 2px; background: var(--accent); }
 .pd-nav-r { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .pd-icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -217,10 +227,13 @@ body {
 .pd-brand-logo { display: inline-flex; align-items: center; margin-bottom: 16px; }
 .pd-brand-logo-img { max-height: 48px; width: auto; display: block; }
 .pd-page-title {
-  font-family: var(--font-display); font-weight: 700;
+  /* Phase 2: editorial serif. Newsreader has a quiet bracketed serif and
+     legible italic; we use the regular weight at 600 — the larger size
+     does the visual work, not the weight. */
+  font-family: var(--font-display-serif); font-weight: 600;
   font-size: var(--fs-display);
   line-height: var(--lh-display);
-  letter-spacing: -0.025em;
+  letter-spacing: -0.02em;
   margin: 0;
 }
 .pd-page-sub { color: var(--text-2); margin: 16px 0 0; font-size: 16px; max-width: 60ch; line-height: 1.5; }
@@ -275,7 +288,7 @@ body {
   position: relative;
 }
 .pd-rcard:hover { border-color: var(--hairline-2); transform: translateY(-1px); }
-.pd-rcard.is-selected { border-color: var(--accent-border); box-shadow: var(--accent-glow); background: oklch(from var(--accent) 0.18 0.05 h / .12); }
+.pd-rcard.is-selected { border-color: var(--accent-border); background: oklch(from var(--accent) 0.18 0.05 h / .12); }
 .pd-rcard.is-selected::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   box-shadow: inset 0 0 0 1px var(--accent-border);
@@ -316,7 +329,7 @@ body {
   transition: all var(--t);
 }
 .pd-date-cell:hover { border-color: var(--hairline-2); transform: translateY(-1px); }
-.pd-date-cell.is-selected { background: var(--accent-soft); border-color: var(--accent-border); box-shadow: var(--accent-glow); }
+.pd-date-cell.is-selected { background: var(--accent-soft); border-color: var(--accent-border); }
 .pd-date-cell.is-selected .pd-date-num { color: var(--accent); }
 .pd-date-day { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; }
 .pd-date-num { font-family: var(--font-display); font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
@@ -347,7 +360,7 @@ body {
   animation-delay: calc(var(--i, 0) * 28ms);
 }
 .pd-slot:hover { border-color: var(--hairline-2); }
-.pd-slot.is-selected { background: var(--accent); color: var(--text-on-accent); border-color: transparent; box-shadow: var(--accent-glow); }
+.pd-slot.is-selected { background: var(--accent); color: var(--text-on-accent); border-color: transparent; }
 .pd-slot.is-selected .pd-slot-time { color: var(--text-on-accent); }
 .pd-slot.is-disabled, .pd-slot.is-taken { opacity: 0.42; cursor: not-allowed; }
 .pd-slot.is-taken {
@@ -371,7 +384,7 @@ body {
 .pd-dot { width: 8px; height: 8px; border-radius: 999px; }
 .pd-dot--free { background: var(--surface); border: 1px solid var(--hairline-2); }
 .pd-dot--taken { background: var(--text-4); }
-.pd-dot--sel { background: var(--accent); box-shadow: var(--accent-glow); }
+.pd-dot--sel { background: var(--accent); }
 
 .pd-empty {
   padding: 32px;
@@ -431,7 +444,6 @@ body {
 .pd-confirmed-card::before {
   content: ""; position: absolute; inset: -2px -2px auto -2px; height: 4px;
   background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  box-shadow: var(--accent-glow);
 }
 .pd-confirmed-stamp {
   display: inline-flex; align-items: center; justify-content: center;
@@ -441,7 +453,7 @@ body {
   margin-bottom: 22px;
   animation: pd-stamp-in 520ms var(--ease) both;
 }
-.pd-confirmed-title { font-family: var(--font-display); font-size: clamp(34px, 4.4vw, 46px); font-weight: 700; letter-spacing: -0.025em; margin: 6px 0 28px; line-height: var(--lh-title); }
+.pd-confirmed-title { font-family: var(--font-display-serif); font-size: clamp(34px, 4.4vw, 46px); font-weight: 600; letter-spacing: -0.02em; margin: 6px 0 28px; line-height: var(--lh-title); }
 .pd-confirmed-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px 32px; padding: 22px 0; border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); margin-bottom: 24px; }
 .pd-confirmed-grid > div { display: flex; flex-direction: column; gap: 4px; }
 .pd-confirmed-key { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; }
@@ -486,7 +498,7 @@ body {
   font-size: 11px; font-weight: 600;
 }
 .pd-avatar--sm { width: 22px; height: 22px; }
-.pd-avatar--ai { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-border); box-shadow: var(--accent-glow); }
+.pd-avatar--ai { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-border); }
 .pd-avatar--user { background: var(--surface-2); color: var(--text-2); border: 1px solid var(--hairline); }
 
 .pd-chat-col { display: flex; flex-direction: column; gap: 8px; max-width: 80%; }
@@ -496,7 +508,7 @@ body {
   max-width: 580px;
 }
 .pd-bubble--ai { background: var(--surface); border: 1px solid var(--hairline); color: var(--text); border-top-left-radius: 4px; }
-.pd-bubble--user { background: var(--accent); color: var(--text-on-accent); border-top-right-radius: 4px; box-shadow: var(--accent-glow); }
+.pd-bubble--user { background: var(--accent); color: var(--text-on-accent); border-top-right-radius: 4px; }
 /* Caret retired in the polish pass — assistant tokens fade in via .pd-tok. */
 .pd-caret { display: none; }
 
@@ -527,7 +539,6 @@ body {
 .pd-bcard {
   background: var(--surface); border: 1px solid var(--accent-border);
   border-radius: var(--r-md); padding: 14px; max-width: 460px;
-  box-shadow: var(--accent-glow);
 }
 .pd-bcard-head { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
 .pd-bcard-stamp { width: 28px; height: 28px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--accent-border); }
@@ -568,7 +579,6 @@ body {
   width: 38px; height: 38px; border-radius: 10px;
   background: var(--accent); color: var(--text-on-accent);
   display: inline-flex; align-items: center; justify-content: center;
-  box-shadow: var(--accent-glow);
   transition: filter var(--t), background var(--t);
 }
 .pd-send:hover { filter: brightness(1.05); }
@@ -615,7 +625,7 @@ body {
 .pd-stat::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--hairline-2); }
 .pd-stat--ok::before { background: var(--ok); }
 .pd-stat--warn::before { background: var(--warn); }
-.pd-stat--info::before { background: var(--accent); box-shadow: var(--accent-glow); }
+.pd-stat--info::before { background: var(--accent); }
 .pd-stat-label { font-size: var(--fs-micro); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 500; }
 .pd-stat-value { font-family: var(--font-display); font-size: var(--fs-title); font-weight: 700; line-height: 1; letter-spacing: -0.022em; }
 .pd-stat-delta { font-size: 11px; color: var(--ok); font-family: var(--font-mono); }
@@ -643,7 +653,7 @@ body {
   transition: all var(--t);
 }
 .pd-conv:hover { border-color: var(--hairline-2); }
-.pd-conv.is-active { background: oklch(from var(--accent) 0.18 0.05 h / .12); border-color: var(--accent-border); box-shadow: var(--accent-glow); }
+.pd-conv.is-active { background: oklch(from var(--accent) 0.18 0.05 h / .12); border-color: var(--accent-border); }
 .pd-conv.is-closed { opacity: 0.55; }
 .pd-conv-l { display: flex; gap: 10px; align-items: center; min-width: 0; }
 .pd-conv-state { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
@@ -701,7 +711,6 @@ body {
   position: absolute; left: 0; top: 4px; bottom: 4px;
   width: 3px; border-radius: 3px;
   background: var(--accent);
-  box-shadow: var(--accent-glow);
   animation: pd-edge-flash 1400ms var(--ease) both;
 }
 @keyframes pd-row-in {
@@ -889,7 +898,9 @@ body {
   .pd-tr--head { display: none; }
   .pd-confirm { grid-template-columns: 1fr; }
   .pd-stat-grid { grid-template-columns: 1fr 1fr; }
-  .pd-page-title { font-size: 32px; }
+  /* The Phase 1 audit removed the .pd-page-title mobile override here so
+     the clamp(38px, 5.2vw, 60px) keeps scaling on phones — the hero is
+     the editorial moment on the page that should land on every device. */
 }
 
 /* —————— PAGE WRAPPERS —————— */
