@@ -69,6 +69,10 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "core.middleware.CurrentStoreMiddleware",
     "core.middleware.CustomerSessionMiddleware",
+    # v10a — gates /api/admin/* on a staff Django session. Runs LAST so
+    # `request.user` (set by AuthenticationMiddleware) and `request.store`
+    # (set by CurrentStoreMiddleware) are both populated before the check.
+    "core.middleware.StaffOnlyMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"

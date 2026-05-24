@@ -48,8 +48,8 @@ def regular_user(db):
 # ---------------------------------------------------------------------------
 
 
-def test_login_happy_path_sets_session(client, staff_user):
-    resp = client.post(
+def test_login_happy_path_sets_session(anon_client, staff_user):
+    resp = anon_client.post(
         reverse("api:staff-login"),
         data={"username": "alice", "password": "alice-pw"},
         content_type="application/json",
@@ -66,25 +66,25 @@ def test_login_happy_path_sets_session(client, staff_user):
     assert "sessionid" in resp.cookies
 
     # Subsequent /me/ on the same client returns the user.
-    me = client.get(reverse("api:staff-me"))
+    me = anon_client.get(reverse("api:staff-me"))
     assert me.status_code == 200
     assert me.json()["username"] == "alice"
 
 
-def test_login_wrong_password_is_401(client, staff_user):
-    resp = client.post(
+def test_login_wrong_password_is_401(anon_client, staff_user):
+    resp = anon_client.post(
         reverse("api:staff-login"),
         data={"username": "alice", "password": "WRONG"},
         content_type="application/json",
     )
     assert resp.status_code == 401
     # No session created → /me/ is anonymous.
-    me = client.get(reverse("api:staff-me"))
+    me = anon_client.get(reverse("api:staff-me"))
     assert me.status_code == 401
 
 
-def test_login_unknown_username_is_401(client, db):
-    resp = client.post(
+def test_login_unknown_username_is_401(anon_client, db):
+    resp = anon_client.post(
         reverse("api:staff-login"),
         data={"username": "ghost", "password": "x"},
         content_type="application/json",
@@ -92,15 +92,15 @@ def test_login_unknown_username_is_401(client, db):
     assert resp.status_code == 401
 
 
-def test_login_non_staff_user_is_403(client, regular_user):
-    resp = client.post(
+def test_login_non_staff_user_is_403(anon_client, regular_user):
+    resp = anon_client.post(
         reverse("api:staff-login"),
         data={"username": "bob", "password": "bob-pw"},
         content_type="application/json",
     )
     assert resp.status_code == 403
     # No session created.
-    me = client.get(reverse("api:staff-me"))
+    me = anon_client.get(reverse("api:staff-me"))
     assert me.status_code == 401
 
 
@@ -109,24 +109,24 @@ def test_login_non_staff_user_is_403(client, regular_user):
 # ---------------------------------------------------------------------------
 
 
-def test_logout_clears_session(client, staff_user):
-    client.post(
+def test_logout_clears_session(anon_client, staff_user):
+    anon_client.post(
         reverse("api:staff-login"),
         data={"username": "alice", "password": "alice-pw"},
         content_type="application/json",
     )
-    assert client.get(reverse("api:staff-me")).status_code == 200
+    assert anon_client.get(reverse("api:staff-me")).status_code == 200
 
-    resp = client.post(reverse("api:staff-logout"))
+    resp = anon_client.post(reverse("api:staff-logout"))
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
 
-    me = client.get(reverse("api:staff-me"))
+    me = anon_client.get(reverse("api:staff-me"))
     assert me.status_code == 401
 
 
-def test_logout_when_already_anonymous_is_200(client, db):
-    resp = client.post(reverse("api:staff-logout"))
+def test_logout_when_already_anonymous_is_200(anon_client, db):
+    resp = anon_client.post(reverse("api:staff-logout"))
     assert resp.status_code == 200
 
 
@@ -135,15 +135,15 @@ def test_logout_when_already_anonymous_is_200(client, db):
 # ---------------------------------------------------------------------------
 
 
-def test_me_anonymous_is_401(client, db):
-    resp = client.get(reverse("api:staff-me"))
+def test_me_anonymous_is_401(anon_client, db):
+    resp = anon_client.get(reverse("api:staff-me"))
     assert resp.status_code == 401
 
 
-def test_me_non_staff_authenticated_is_401(client, regular_user):
+def test_me_non_staff_authenticated_is_401(anon_client, regular_user):
     # Force-login a non-staff user via Django's test client.
-    client.force_login(regular_user)
-    resp = client.get(reverse("api:staff-me"))
+    anon_client.force_login(regular_user)
+    resp = anon_client.get(reverse("api:staff-me"))
     # Non-staff session is treated as unauthenticated for admin purposes.
     assert resp.status_code == 401
 
@@ -153,10 +153,10 @@ def test_me_non_staff_authenticated_is_401(client, regular_user):
 # ---------------------------------------------------------------------------
 
 
-def test_login_rate_limit_blocks_sixth_attempt(client, staff_user):
+def test_login_rate_limit_blocks_sixth_attempt(anon_client, staff_user):
     # Five wrong attempts → all 401.
     for _ in range(5):
-        resp = client.post(
+        resp = anon_client.post(
             reverse("api:staff-login"),
             data={"username": "alice", "password": "WRONG"},
             content_type="application/json",
@@ -164,7 +164,7 @@ def test_login_rate_limit_blocks_sixth_attempt(client, staff_user):
         assert resp.status_code == 401
 
     # Sixth attempt — even with the right password — gets 429.
-    resp = client.post(
+    resp = anon_client.post(
         reverse("api:staff-login"),
         data={"username": "alice", "password": "alice-pw"},
         content_type="application/json",
@@ -172,17 +172,17 @@ def test_login_rate_limit_blocks_sixth_attempt(client, staff_user):
     assert resp.status_code == 429
 
 
-def test_login_rate_limit_resets_on_success(client, staff_user):
+def test_login_rate_limit_resets_on_success(anon_client, staff_user):
     # Four wrong attempts (still under the limit).
     for _ in range(4):
-        client.post(
+        anon_client.post(
             reverse("api:staff-login"),
             data={"username": "alice", "password": "WRONG"},
             content_type="application/json",
         )
 
     # Right password works AND clears the counter.
-    ok = client.post(
+    ok = anon_client.post(
         reverse("api:staff-login"),
         data={"username": "alice", "password": "alice-pw"},
         content_type="application/json",
@@ -192,7 +192,7 @@ def test_login_rate_limit_resets_on_success(client, staff_user):
     # Five subsequent wrong attempts are allowed again because the
     # counter reset on success.
     for _ in range(5):
-        resp = client.post(
+        resp = anon_client.post(
             reverse("api:staff-login"),
             data={"username": "alice", "password": "WRONG"},
             content_type="application/json",

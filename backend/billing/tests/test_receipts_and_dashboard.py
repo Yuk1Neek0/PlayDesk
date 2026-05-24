@@ -11,6 +11,12 @@ from django.core import mail
 from django.test import Client, override_settings
 
 from billing.models import Payment, PaymentKind, PaymentRowStatus
+from conftest import make_staff_client
+
+
+def _client() -> Client:
+    """Helper — fresh staff-authenticated client (v10a)."""
+    return make_staff_client(Client)
 
 
 @pytest.mark.django_db
@@ -28,7 +34,7 @@ class TestPaymentReceipt:
             override_settings(STRIPE_WEBHOOK_SECRET=""),
             mock.patch("billing.receipts._enqueue") as enqueue,
         ):
-            Client().post(
+            _client().post(
                 "/api/stripe/webhook/",
                 data=json.dumps(
                     {
@@ -69,7 +75,7 @@ class TestRefundReceipt:
             override_settings(STRIPE_WEBHOOK_SECRET=""),
             mock.patch("billing.receipts._enqueue") as enqueue,
         ):
-            Client().post(
+            _client().post(
                 "/api/stripe/webhook/",
                 data=json.dumps(
                     {
@@ -111,7 +117,7 @@ class TestDashboardTiles:
             currency="USD",
             status=PaymentRowStatus.SUCCEEDED,
         )
-        resp = Client().get(
+        resp = _client().get(
             "/api/admin/metrics/business/",
             HTTP_X_PD_STORE_SLUG=store.slug,
         )
@@ -140,7 +146,7 @@ class TestPaymentLedger:
             currency="USD",
             status=PaymentRowStatus.SUCCEEDED,
         )
-        resp = Client().get(
+        resp = _client().get(
             "/api/admin/payments/?kind=refund",
             HTTP_X_PD_STORE_SLUG=store.slug,
         )
