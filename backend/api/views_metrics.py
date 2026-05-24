@@ -22,7 +22,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.dates import today_local
-from core.models import Booking, Customer, QREvent, Store
+from core.models import Booking, Customer, QREvent
 from outbound.models import OutboundMessage, OutboundStatus
 
 # QR engagement window is hard-pinned to 7 days per the PRD — the metric
@@ -41,7 +41,7 @@ def _parse_days(raw: str | None) -> int:
         return _DEFAULT_WINDOW_DAYS
 
 
-def _count_bookings_on(store: Store, local_date) -> int:
+def _count_bookings_on(store, local_date) -> int:
     """Count bookings whose start_time falls within ``local_date`` in the
     store's timezone."""
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -66,7 +66,7 @@ def _trend_pct(today_count: int, yesterday_count: int) -> float | None:
     return round((today_count - yesterday_count) / yesterday_count * 100.0, 1)
 
 
-def _revenue_cents(store: Store, since) -> int:
+def _revenue_cents(store, since) -> int:
     """Sum of completed-booking deposit amounts in the window, in cents.
 
     Returns 0 when ``Booking`` doesn't expose ``deposit_amount`` (i.e.
@@ -92,7 +92,10 @@ class BusinessMetricsView(APIView):
 
     def get(self, request):
         days = _parse_days(request.query_params.get("days"))
-        store = Store.objects.first()
+        # ``request.store`` is set by ``CurrentStoreMiddleware``; every
+        # aggregate below scopes to it so the dashboard reflects the
+        # operator's currently-selected location.
+        store = request.store
 
         # No store yet → zeros for everything. The dashboard renders the
         # cards in their empty state rather than 500-ing.
