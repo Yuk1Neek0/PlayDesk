@@ -16,6 +16,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AdminBookingListView,
     AdminConversationListView,
+    AdminCustomerBulkSendView,
     AdminCustomerDetailView,
     AdminCustomerListView,
     AdminCustomerNoteCreateView,
@@ -119,6 +120,13 @@ urlpatterns = [
         "admin/customers/",
         AdminCustomerListView.as_view(),
         name="admin-customer-list",
+    ),
+    # v11c retention-scoring: blast one template at a cohort. Must come
+    # BEFORE the <int:pk>/ pattern so "bulk-send" doesn't match as a pk.
+    path(
+        "admin/customers/bulk-send/",
+        AdminCustomerBulkSendView.as_view(),
+        name="admin-customer-bulk-send",
     ),
     path(
         "admin/customers/<int:pk>/",

@@ -3,32 +3,62 @@
 // /admin/customers — paginated, debounced-search list of every customer
 // known to the platform. Foundational for the retention surface; deeper
 // detail lives on the row's /admin/customers/[id] page.
+//
+// v11c retention-scoring extension: a cohort filter chip toolbar with
+// per-cohort counts, plus a "Send re-engagement to all visible" button
+// that fires the bulk-send endpoint when a non-"all" cohort is active.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { CohortChip, COHORT_LABELS, COHORT_ORDER } from "@/components/admin/cohort-chip";
 import { fmtDate, relTime } from "@/components/pd-ui";
-import { adminListCustomers, type CustomerSummary } from "@/lib/api";
+import {
+  adminBulkSendToCohort,
+  adminListCustomers,
+  type CohortCounts,
+  type CustomerCohort,
+  type CustomerSummary,
+} from "@/lib/api";
 import { useStaffSession } from "@/lib/staff-session";
 import { useCurrentStore } from "@/lib/store-context";
 
 const SEARCH_DEBOUNCE_MS = 300;
+const EMPTY_COUNTS: CohortCounts = {
+  new: 0,
+  active: 0,
+  at_risk: 0,
+  dormant: 0,
+  lost: 0,
+};
 
 interface PageState {
   loading: boolean;
   error: boolean;
   count: number;
   results: CustomerSummary[];
+  cohortCounts: CohortCounts;
 }
 
-const EMPTY: PageState = { loading: true, error: false, count: 0, results: [] };
+const EMPTY: PageState = {
+  loading: true,
+  error: false,
+  count: 0,
+  results: [],
+  cohortCounts: EMPTY_COUNTS,
+};
+
+type CohortFilter = "all" | CustomerCohort;
 
 export default function AdminCustomersPage() {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [page, setPage] = useState(1);
+  const [cohortFilter, setCohortFilter] = useState<CohortFilter>("all");
   const [state, setState] = useState<PageState>(EMPTY);
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkToast, setBulkToast] = useState("");
 
   const { user, ready: authReady } = useStaffSession();
   const router = useRouter();
@@ -51,28 +81,66 @@ export default function AdminCustomersPage() {
     };
   }, [q]);
 
-  // A change to the search term resets pagination.
+  // Search / cohort changes reset pagination + clear any prior toast.
   useEffect(() => {
     setPage(1);
-  }, [debouncedQ]);
+    setBulkToast("");
+  }, [debouncedQ, cohortFilter]);
 
   useEffect(() => {
     let cancelled = false;
     setState((s) => ({ ...s, loading: true, error: false }));
-    adminListCustomers({ q: debouncedQ || undefined, page })
+    adminListCustomers({
+      q: debouncedQ || undefined,
+      page,
+      cohort: cohortFilter === "all" ? undefined : cohortFilter,
+    })
       .then((data) => {
         if (cancelled) return;
-        setState({ loading: false, error: false, count: data.count, results: data.results });
+        setState({
+          loading: false,
+          error: false,
+          count: data.count,
+          results: data.results,
+          cohortCounts: data.cohort_counts ?? EMPTY_COUNTS,
+        });
       })
       .catch(() => {
-        if (!cancelled) setState({ loading: false, error: true, count: 0, results: [] });
+        if (!cancelled)
+          setState({
+            loading: false,
+            error: true,
+            count: 0,
+            results: [],
+            cohortCounts: EMPTY_COUNTS,
+          });
       });
     return () => {
       cancelled = true;
     };
-  }, [debouncedQ, page, storeSlug]);
+  }, [debouncedQ, page, storeSlug, cohortFilter]);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(state.count / 20)), [state.count]);
+
+  async function sendReEngagement() {
+    if (cohortFilter === "all" || bulkSending) return;
+    const label = COHORT_LABELS[cohortFilter];
+    const confirmed = window.confirm(
+      `Send the re-engagement message to all ${state.count} ${label} customers? ` +
+        `Opted-out customers will be skipped automatically.`,
+    );
+    if (!confirmed) return;
+    setBulkSending(true);
+    setBulkToast("");
+    try {
+      const res = await adminBulkSendToCohort(cohortFilter, "re_engagement_60d");
+      setBulkToast(`Sent to ${res.sent} customers, skipped ${res.skipped}.`);
+    } catch {
+      setBulkToast("Bulk send failed. Try again or check the logs.");
+    } finally {
+      setBulkSending(false);
+    }
+  }
 
   if (!authReady) return <div className="pd-admin" />;
   if (!user?.is_staff) return null;
@@ -95,6 +163,51 @@ export default function AdminCustomersPage() {
         </div>
       </header>
 
+      {/* Cohort filter chips — v11c retention-scoring. */}
+      <div
+        className="pd-card-sub"
+        data-testid="cohort-filter"
+        style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0 16px" }}
+      >
+        <button
+          type="button"
+          className={`pd-chip ${cohortFilter === "all" ? "" : "pd-chip--ghost"}`}
+          onClick={() => setCohortFilter("all")}
+          data-cohort-button="all"
+        >
+          All ({state.count})
+        </button>
+        {COHORT_ORDER.map((c) => (
+          <button
+            key={c}
+            type="button"
+            className={`pd-chip ${cohortFilter === c ? "" : "pd-chip--ghost"}`}
+            onClick={() => setCohortFilter(c)}
+            data-cohort-button={c}
+          >
+            {COHORT_LABELS[c]} ({state.cohortCounts[c] ?? 0})
+          </button>
+        ))}
+        {cohortFilter !== "all" && (
+          <button
+            type="button"
+            className="pd-btn pd-btn--primary pd-btn--sm"
+            onClick={sendReEngagement}
+            disabled={bulkSending || state.count === 0}
+            data-testid="cohort-bulk-send"
+          >
+            {bulkSending
+              ? "Sending…"
+              : `Send re-engagement to all ${state.count} visible`}
+          </button>
+        )}
+        {bulkToast && (
+          <span className="pd-card-sub" data-testid="cohort-bulk-toast">
+            {bulkToast}
+          </span>
+        )}
+      </div>
+
       <section className="pd-card">
         <div className="pd-card-head">
           <h2 className="pd-card-title">
@@ -115,11 +228,15 @@ export default function AdminCustomersPage() {
 
         {!state.loading && !state.error && (
           <div className="pd-table">
-            <div className="pd-tr pd-tr--head">
+            <div
+              className="pd-tr pd-tr--head"
+              style={{ gridTemplateColumns: "1.4fr 1.1fr 1fr 0.7fr 0.9fr 1.1fr" }}
+            >
               <div className="pd-th">Name</div>
               <div className="pd-th">Phone</div>
               <div className="pd-th">Last visit</div>
-              <div className="pd-th">Total visits</div>
+              <div className="pd-th">Visits</div>
+              <div className="pd-th">Cohort</div>
               <div className="pd-th">Tags</div>
             </div>
             {state.results.length === 0 && (
@@ -130,7 +247,7 @@ export default function AdminCustomersPage() {
                 key={c.id}
                 className="pd-tr pd-tr--row"
                 href={`/admin/customers/${c.id}`}
-                style={{ display: "grid", gridTemplateColumns: "1.6fr 1.2fr 1.2fr 0.8fr 1.2fr" }}
+                style={{ display: "grid", gridTemplateColumns: "1.4fr 1.1fr 1fr 0.7fr 0.9fr 1.1fr" }}
               >
                 <div className="pd-td pd-td-strong">{c.name || "(no name on file)"}</div>
                 <div className="pd-td pd-mono">{c.phone}</div>
@@ -141,6 +258,9 @@ export default function AdminCustomersPage() {
                   )}
                 </div>
                 <div className="pd-td pd-mono">{c.total_visits}</div>
+                <div className="pd-td">
+                  <CohortChip cohort={c.cohort} />
+                </div>
                 <div className="pd-td">
                   {c.tags.length === 0
                     ? "—"

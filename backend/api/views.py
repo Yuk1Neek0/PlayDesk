@@ -505,31 +505,60 @@ class AdminBookingListView(ListAPIView):
 
 
 class AdminCustomerListView(ListAPIView):
-    """GET /api/admin/customers/?q=&page= — paginated, newest-first list.
+    """GET /api/admin/customers/?q=&page=&cohort= — paginated, newest-first list.
 
     Search is case-insensitive on name; if the query string normalises to a
     valid E.164 phone, an exact phone match is also OR'd in. Two searches in
     one — without the query, ordering is by ``-last_visit_at``.
+
+    v11c retention: accepts ``?cohort=new|active|at_risk|dormant|lost`` and
+    returns store-scoped per-cohort counts in the response body so the
+    admin chip toolbar can render counts without a separate query.
     """
 
     serializer_class = CustomerSummarySerializer
     pagination_class = StandardPagination
 
-    def get_queryset(self):
-        from django.db.models import Q
+    # Allowlist for the ?cohort= filter — anything else is silently ignored
+    # (matches the existing channel / status filter behaviour).
+    _COHORT_VALUES = frozenset({"new", "active", "at_risk", "dormant", "lost"})
 
+    def _store_scoped_qs(self):
         qs = Customer.objects.all()
         if self.request.store is not None:
             qs = qs.filter(store=self.request.store)
+        return qs
+
+    def get_queryset(self):
+        from django.db.models import F, Q
+
+        qs = self._store_scoped_qs()
         q = self.request.query_params.get("q", "").strip()
         if q:
             normalized = normalize_phone(q)
             phone_q = Q(phone=normalized) if normalized else Q()
             qs = qs.filter(Q(name__icontains=q) | phone_q)
+        cohort = self.request.query_params.get("cohort", "").strip()
+        if cohort in self._COHORT_VALUES:
+            qs = qs.filter(cohort=cohort)
         # NULLS LAST so customers without visits don't lead the list.
-        from django.db.models import F
-
         return qs.order_by(F("last_visit_at").desc(nulls_last=True), "-created_at")
+
+    def list(self, request, *args, **kwargs):
+        from django.db.models import Count
+
+        response = super().list(request, *args, **kwargs)
+        # Store-scoped per-cohort counts — independent of the active filter
+        # so the chip labels stay stable as staff toggle between cohorts.
+        # Single GROUP BY on an indexed column — cheap.
+        counts_qs = self._store_scoped_qs().values("cohort").annotate(count=Count("id"))
+        counts = {row["cohort"]: row["count"] for row in counts_qs}
+        # Always include every label, even empty, so the UI doesn't have
+        # to defensively check for missing keys.
+        response.data["cohort_counts"] = {
+            label: counts.get(label, 0) for label in self._COHORT_VALUES
+        }
+        return response
 
 
 class AdminCustomerDetailView(RetrieveAPIView):
@@ -570,6 +599,85 @@ class AdminCustomerNoteCreateView(APIView):
         author = request.user if request.user.is_authenticated else None
         note = customer.notes.create(body=ser.validated_data["body"], author=author)
         return Response(CustomerNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+
+# Allowlist of templates the bulk-send endpoint is willing to blast. We
+# don't want a staff click to fire arbitrary booking_confirmation /
+# payment_receipt copy at the wrong audience — only deliberate
+# re-engagement messages are safe to bulk-send.
+BULK_SEND_TEMPLATE_ALLOWLIST = frozenset({"re_engagement_60d"})
+
+
+class AdminCustomerBulkSendView(APIView):
+    """POST /api/admin/customers/bulk-send/ — fire one template at a cohort.
+
+    Body: ``{"cohort": "<label>", "template_key": "re_engagement_60d"}``.
+    Iterates store-scoped customers in the cohort, skips ``sms_opt_out``,
+    enqueues via the v4 outbound layer (which already honours quiet
+    hours), writes one ``CustomerNote`` per send for audit.
+
+    Returns ``{sent: N, skipped: M, skip_reasons: {opt_out: K, ...}}``.
+    Gated by ``StaffOnlyMiddleware`` (v10a) automatically.
+    """
+
+    _COHORT_VALUES = AdminCustomerListView._COHORT_VALUES
+
+    def post(self, request):
+        cohort = (request.data.get("cohort") or "").strip()
+        template_key = (request.data.get("template_key") or "").strip()
+
+        if cohort not in self._COHORT_VALUES:
+            return Response(
+                {"detail": f"Unknown cohort {cohort!r}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if template_key not in BULK_SEND_TEMPLATE_ALLOWLIST:
+            return Response(
+                {"detail": f"Template {template_key!r} is not bulk-sendable."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from outbound.api import enqueue_message
+
+        qs = Customer.objects.filter(cohort=cohort)
+        if request.store is not None:
+            qs = qs.filter(store=request.store)
+
+        sent = 0
+        skip_reasons: dict[str, int] = {}
+        author = request.user if request.user.is_authenticated else None
+
+        for customer in qs.iterator(chunk_size=500):
+            if "sms_opt_out" in (customer.tags or []):
+                skip_reasons["opt_out"] = skip_reasons.get("opt_out", 0) + 1
+                continue
+            try:
+                enqueue_message(
+                    customer,
+                    template_key,
+                    context={
+                        "customer_name": customer.name or "there",
+                        "store_name": customer.store.name,
+                    },
+                )
+            except Exception as exc:  # noqa: BLE001 — log + count, don't 500.
+                reason = f"error:{type(exc).__name__}"
+                skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+                continue
+            customer.notes.create(
+                body=f"Sent {template_key} via bulk action",
+                author=author,
+            )
+            sent += 1
+
+        return Response(
+            {
+                "sent": sent,
+                "skipped": sum(skip_reasons.values()),
+                "skip_reasons": skip_reasons,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -194,6 +194,8 @@ export function adminUndoCheckInBooking(id: number): Promise<Booking> {
 
 // ── Admin: customers (retention) ──────────────────────────────────────────
 
+export type CustomerCohort = "new" | "active" | "at_risk" | "dormant" | "lost";
+
 export interface CustomerSummary {
   id: number;
   phone: string;
@@ -204,7 +206,13 @@ export interface CustomerSummary {
   total_visits: number;
   last_visit_at: string | null;
   created_at: string;
+  // v11c retention-scoring — derived nightly by `recompute_retention`.
+  cohort: CustomerCohort;
+  churn_score: number;
+  retention_updated_at: string | null;
 }
+
+export type CohortCounts = Record<CustomerCohort, number>;
 
 export interface CustomerVisit {
   id: number;
@@ -234,11 +242,16 @@ export interface PaginatedCustomers {
   next: string | null;
   previous: string | null;
   results: CustomerSummary[];
+  // v11c retention-scoring — store-scoped per-cohort counts. Always
+  // includes every label, even zero, so the chip toolbar doesn't have
+  // to defensively check for missing keys.
+  cohort_counts: CohortCounts;
 }
 
 export function adminListCustomers(params?: {
   q?: string;
   page?: number;
+  cohort?: CustomerCohort;
 }): Promise<PaginatedCustomers> {
   return request(`/api/admin/customers${queryString(params)}`);
 }
@@ -251,6 +264,24 @@ export function adminAddCustomerNote(id: number, body: string): Promise<Customer
   return request(`/api/admin/customers/${id}/notes`, {
     method: "POST",
     body: JSON.stringify({ body }),
+  });
+}
+
+// v11c retention-scoring — blast one template at every customer in a
+// cohort (store-scoped, opt-out respected, quiet-hours honoured).
+export interface BulkSendResponse {
+  sent: number;
+  skipped: number;
+  skip_reasons: Record<string, number>;
+}
+
+export function adminBulkSendToCohort(
+  cohort: CustomerCohort,
+  templateKey: string,
+): Promise<BulkSendResponse> {
+  return request(`/api/admin/customers/bulk-send`, {
+    method: "POST",
+    body: JSON.stringify({ cohort, template_key: templateKey }),
   });
 }
 

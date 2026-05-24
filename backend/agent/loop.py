@@ -252,6 +252,11 @@ def _build_customer_context(conversation: Conversation) -> str | None:
     if customer.name:
         lines.append(f"- Name: {customer.name}")
     lines.append(f"- Total visits: {customer.total_visits}")
+    # v11c retention-scoring — surface cohort so the agent can soften tone
+    # for at_risk / dormant customers. Skip "new" because total_visits=0
+    # already telegraphs that; emitting "Cohort: new" is just noise.
+    if getattr(customer, "cohort", "new") != "new":
+        lines.append(f"- Cohort: {customer.cohort}")
     if customer.last_visit_at:
         lines.append(f"- Last visit: {customer.last_visit_at:%Y-%m-%d}")
     tier = tier_for(customer)

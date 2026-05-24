@@ -182,6 +182,13 @@ class Customer(models.Model):
     for retention features (visits, rewards, notes)."""
 
     LOCALE_CHOICES = [("en", "English"), ("zh", "中文")]
+    COHORT_CHOICES = [
+        ("new", "New"),
+        ("active", "Active"),
+        ("at_risk", "At risk"),
+        ("dormant", "Dormant"),
+        ("lost", "Lost"),
+    ]
 
     store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="customers")
     phone = models.CharField(max_length=32, help_text="E.164 normalized phone number.")
@@ -193,10 +200,26 @@ class Customer(models.Model):
     last_visit_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # ----- v11c retention-scoring -----
+    # Derived nightly by `core/retention.py` (see `recompute_retention`
+    # management command). Cohort labels are ordered "increasing concern".
+    # `churn_score` is 0.0 (fully engaged) → 1.0 (lost); both columns are
+    # indexed (see Meta.indexes below — explicit names to avoid the v4
+    # campaigns CI flake on auto-generated index names).
+    churn_score = models.FloatField(default=0.0)
+    cohort = models.CharField(max_length=16, choices=COHORT_CHOICES, default="new")
+    retention_updated_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ["-last_visit_at", "-created_at"]
         constraints = [
             models.UniqueConstraint(fields=["store", "phone"], name="customer_unique_store_phone"),
+        ]
+        indexes = [
+            # Cohort filter on the admin customer list (store-scoped) —
+            # explicit name to keep migration history stable.
+            models.Index(fields=["cohort"], name="customer_cohort_idx"),
+            models.Index(fields=["churn_score"], name="customer_churn_score_idx"),
         ]
         # NOTE: a trigram GIN index on lower(name) is a known perf follow-up
         # for >10k customer datasets. Skipped here because Django's
