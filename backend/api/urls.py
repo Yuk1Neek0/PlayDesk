@@ -52,6 +52,7 @@ from .views_memberships import (
     RewardViewSet,
 )
 from .views_outbound import OutboundMessageListView
+from .views_public import StoreBrandView
 from .webhooks_twilio import twilio_sms_webhook
 
 # DRF router for the rewards/tiers CRUD ViewSets.
@@ -188,6 +189,12 @@ urlpatterns = [
         "admin/outbound/",
         OutboundMessageListView.as_view(),
         name="admin-outbound-list",
+    ),
+    # Public branding signal — consumed by SSR booking + QR pages
+    path(
+        "public/store-brand/",
+        StoreBrandView.as_view(),
+        name="public-store-brand",
     ),
     # Stripe webhook — confirms a booking when its deposit is paid
     path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"),
