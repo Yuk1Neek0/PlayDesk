@@ -52,16 +52,38 @@ function AdminGate({ children }: { children: React.ReactNode }) {
 }
 
 function AdminSubHeader() {
+  const { user, logout } = useStaffSession();
   return (
     <div
       className="pd-admin-subheader"
       style={{
         display: "flex",
         justifyContent: "flex-end",
+        alignItems: "center",
+        gap: 12,
         padding: "8px 24px 0",
       }}
     >
+      {user && (
+        <span
+          data-testid="staff-username"
+          className="pd-chip"
+          style={{ fontSize: 12 }}
+        >
+          Signed in as <strong>{user.username}</strong>
+        </span>
+      )}
       <StoreSwitcher />
+      {user && (
+        <button
+          type="button"
+          onClick={() => void logout()}
+          className="pd-btn pd-btn--ghost pd-btn--sm"
+          data-testid="staff-logout"
+        >
+          Logout
+        </button>
+      )}
     </div>
   );
 }

@@ -1,46 +1,39 @@
-"use client";
+// /login — historically the placeholder "one-click demo sign-in" page.
+// v10a retires it: customers are sent to the real per-store customer
+// portal (`/s/<default>/account`). Staff who somehow land here will
+// be bounced again by the customer portal's auth + the admin gate at
+// /staff/login.
+//
+// This stays as a 302 redirect rather than a 404 so any old bookmarks
+// or e-mail links keep landing somewhere useful. The default-slug
+// lookup mirrors `app/page.tsx` so a renamed flagship store still
+// resolves without a frontend redeploy.
 
-import { useAuth } from "@/lib/auth";
-import { useRouter } from "next/navigation";
+import { redirect } from "next/navigation";
 
-export default function LoginPage() {
-  const { login } = useAuth();
-  const router = useRouter();
+export const dynamic = "force-dynamic";
 
-  function handleLogin(name: string, role: "customer" | "staff") {
-    login(name, role);
-    // Staff land on the dashboard they just authenticated for.
-    router.push(role === "staff" ? "/admin" : "/");
+const FALLBACK_SLUG = "playdesk-flagship";
+
+function backendOrigin(): string {
+  return process.env.BACKEND_ORIGIN ?? "http://127.0.0.1:8000";
+}
+
+async function loadDefaultSlug(): Promise<string> {
+  const origin = backendOrigin();
+  try {
+    const resp = await fetch(`${origin}/api/public/default-store/`, {
+      cache: "no-store",
+    });
+    if (!resp.ok) return FALLBACK_SLUG;
+    const body = (await resp.json()) as { slug: string | null };
+    return typeof body.slug === "string" && body.slug ? body.slug : FALLBACK_SLUG;
+  } catch {
+    return FALLBACK_SLUG;
   }
+}
 
-  return (
-    <div className="max-w-md mx-auto px-4 py-16">
-      <h1 className="text-3xl font-bold text-gray-900 mb-2">Sign In</h1>
-      <p className="text-gray-500 mb-8">
-        One-click demo login — no passwords required.
-      </p>
-
-      <div className="bg-white rounded-lg shadow p-6 space-y-4">
-        <p className="text-sm font-medium text-gray-600 mb-2">Continue as:</p>
-
-        <button
-          onClick={() => handleLogin("Guest Customer", "customer")}
-          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-lg font-medium transition"
-        >
-          Customer (Guest)
-        </button>
-
-        <button
-          onClick={() => handleLogin("Staff Member", "staff")}
-          className="w-full bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-lg font-medium transition"
-        >
-          Staff / Admin
-        </button>
-
-        <p className="text-xs text-gray-400 text-center pt-2">
-          Dummy auth for demo purposes — real NextAuth integration in Wave 1.
-        </p>
-      </div>
-    </div>
-  );
+export default async function LoginPage() {
+  const slug = await loadDefaultSlug();
+  redirect(`/s/${slug}/account`);
 }

@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { useAuth } from "@/lib/auth";
+import { useStaffSession } from "@/lib/staff-session";
 import { useCurrentStore } from "@/lib/store-context";
 import { BusinessDashboardStrip } from "@/components/admin/business-dashboard-strip";
 import {
@@ -64,10 +64,10 @@ export default function AdminPage() {
   });
 
   // Staff-only route guard: send anyone not signed in as staff to /login.
-  const { user, ready: authReady } = useAuth();
+  const { user, ready: authReady } = useStaffSession();
   const router = useRouter();
   useEffect(() => {
-    if (authReady && user?.role !== "staff") router.replace("/login");
+    if (authReady && !user?.is_staff) router.replace("/staff/login");
   }, [authReady, user, router]);
 
   // Current store from the v6 multi-location switcher. `current?.slug` is
@@ -217,7 +217,7 @@ export default function AdminPage() {
   // Hold rendering until the persisted session is resolved, then render
   // nothing while a non-staff visitor is being redirected to /login.
   if (!authReady) return <div className="pd-admin" />;
-  if (user?.role !== "staff") return null;
+  if (!user?.is_staff) return null;
 
   return (
     <div className="pd-admin">

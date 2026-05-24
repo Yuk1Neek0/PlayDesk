@@ -20,7 +20,7 @@ import {
   listResources,
   type Segment,
 } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useStaffSession } from "@/lib/staff-session";
 import { useCurrentStore } from "@/lib/store-context";
 
 interface Row extends Segment {
@@ -34,10 +34,10 @@ export default function AdminSegmentsPage() {
   const [error, setError] = useState(false);
   const [editing, setEditing] = useState<Segment | "new" | null>(null);
 
-  const { user, ready: authReady } = useAuth();
+  const { user, ready: authReady } = useStaffSession();
   const router = useRouter();
   useEffect(() => {
-    if (authReady && user?.role !== "staff") router.replace("/login");
+    if (authReady && !user?.is_staff) router.replace("/staff/login");
   }, [authReady, user, router]);
 
   const loadAll = useCallback(async (sid: number) => {
@@ -117,7 +117,7 @@ export default function AdminSegmentsPage() {
   }
 
   if (!authReady) return <div className="pd-admin" />;
-  if (user?.role !== "staff") return null;
+  if (!user?.is_staff) return null;
 
   return (
     <div className="pd-admin">

@@ -27,7 +27,7 @@ import {
   type QRActionKind,
   type QRAnalytics,
 } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useStaffSession } from "@/lib/staff-session";
 import { useCurrentStore } from "@/lib/store-context";
 
 const KINDS: { value: QRActionKind; label: string }[] = [
@@ -51,10 +51,10 @@ export default function AdminQRPage() {
   const [loadError, setLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const { user, ready: authReady } = useAuth();
+  const { user, ready: authReady } = useStaffSession();
   const router = useRouter();
   useEffect(() => {
-    if (authReady && user?.role !== "staff") router.replace("/login");
+    if (authReady && !user?.is_staff) router.replace("/staff/login");
   }, [authReady, user, router]);
 
   // v6 multi-location: prefer the active store from <StoreProvider>; fall
@@ -201,7 +201,7 @@ export default function AdminQRPage() {
   }
 
   if (!authReady) return <div className="pd-admin" />;
-  if (user?.role !== "staff") return null;
+  if (!user?.is_staff) return null;
   if (loading) return <div className="pd-admin"><div className="pd-empty">Loading QR config…</div></div>;
   if (loadError) {
     return (
