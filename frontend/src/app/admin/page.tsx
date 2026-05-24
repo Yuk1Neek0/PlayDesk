@@ -416,7 +416,10 @@ export default function AdminPage() {
                     <div className="pd-td">
                       <SourceBadge source={b.source} />
                     </div>
-                    <div className="pd-td pd-td--right pd-td-sub">{relTime(b.created_at)}</div>
+                    <div className="pd-td pd-td--right pd-td-sub">
+                      <BookingTotal booking={b} />
+                      <div>{relTime(b.created_at)}</div>
+                    </div>
                   </div>
                 );
               })}
@@ -527,5 +530,33 @@ function PreviewMsg({
       {tool && <span className="pd-pmsg-tool">{tool}</span>}
       <div className="pd-pmsg-text">{text}</div>
     </div>
+  );
+}
+
+// v8 pricing-rules — render the frozen total + rule-snapshot popover for
+// a booking row. The total_amount / rule_snapshot fields aren't in the
+// shared OpenAPI Booking type yet (the contract regen is gated on
+// another epic landing); cast to a narrow shape locally so the admin
+// table still picks them up.
+function BookingTotal({ booking }: { booking: Booking }) {
+  const b = booking as Booking & {
+    total_amount?: string | null;
+    rule_snapshot?: { label: string; amount: string; rule_id: number | null }[];
+  };
+  if (!b.total_amount) return null;
+  const snap = b.rule_snapshot ?? [];
+  const hasRules = snap.length > 1; // first row is "Base"
+  return (
+    <span
+      title={
+        hasRules
+          ? snap.map((li) => `${li.label}: $${li.amount}`).join(" · ")
+          : `Base $${b.total_amount}`
+      }
+      style={{ display: "inline-block", marginRight: 8 }}
+    >
+      <span className="pd-mono">${b.total_amount}</span>
+      {hasRules && <span className="pd-chip pd-chip--ghost" style={{ marginLeft: 4 }}>{snap.length - 1} rules</span>}
+    </span>
   );
 }

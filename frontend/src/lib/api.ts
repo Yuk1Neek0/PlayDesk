@@ -776,3 +776,80 @@ export function adminUpdateTier(
 export function adminDeleteTier(id: number): Promise<void> {
   return request(`/api/admin/tiers/${id}`, { method: "DELETE" });
 }
+
+// ── Pricing rules (v8) ────────────────────────────────────────────────────
+
+export type PricingRuleType =
+  | "peak_hours"
+  | "day_of_week"
+  | "member_tier"
+  | "min_duration"
+  | "bracket_rate";
+
+export interface PricingRule {
+  id: number;
+  name: string;
+  description: string;
+  enabled: boolean;
+  priority: number;
+  stackable: boolean;
+  rule_type: PricingRuleType;
+  // params shape varies per rule_type — kept loose so each form fragment
+  // can narrow at the call site.
+  params: Record<string, unknown>;
+  applies_to_resource_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuoteLineItem {
+  label: string;
+  amount: string;
+  rule_id: number | null;
+}
+
+export interface QuoteResponse {
+  base_amount: string;
+  line_items: QuoteLineItem[];
+  total_amount: string;
+  rule_snapshot: QuoteLineItem[];
+}
+
+export function adminListPricingRules(): Promise<PricingRule[]> {
+  return request("/api/admin/pricing-rules");
+}
+
+export function adminCreatePricingRule(
+  body: Omit<PricingRule, "id" | "created_at" | "updated_at">,
+): Promise<PricingRule> {
+  return request("/api/admin/pricing-rules", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminUpdatePricingRule(
+  id: number,
+  body: Partial<Omit<PricingRule, "id" | "created_at" | "updated_at">>,
+): Promise<PricingRule> {
+  return request(`/api/admin/pricing-rules/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminDeletePricingRule(id: number): Promise<void> {
+  return request(`/api/admin/pricing-rules/${id}`, { method: "DELETE" });
+}
+
+export function adminFetchQuote(body: {
+  resource_id: number;
+  start_at: string;
+  end_at: string;
+  customer_id?: number;
+}): Promise<QuoteResponse> {
+  return request("/api/quote", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}

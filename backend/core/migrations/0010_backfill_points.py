@@ -19,9 +19,9 @@ from django.db import migrations
 def _seed_backfill(apps, schema_editor) -> None:
     # Schema-sensitive: when running as a migration (`apps` provided),
     # use the historical Store/Customer state to avoid SELECT'ing
-    # columns added by later migrations (e.g. v9 billing fields).
-    # When called directly from a test (`apps is None`), fall back to
-    # live models — that path always runs against a fully-migrated DB.
+    # columns added by later migrations (e.g. v7's `cancellation_lead_hours`
+    # or v9 billing fields). When called directly from a test (`apps is None`),
+    # fall back to live models — that path always runs against a fully-migrated DB.
     from core.memberships import award_points
     from core.models import Customer as LiveCustomer
     from core.models import PointTransaction as LivePT

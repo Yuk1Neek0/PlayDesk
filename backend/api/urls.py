@@ -44,6 +44,15 @@ from .views_campaigns import (
     SegmentListCreateView,
     SegmentPreviewView,
 )
+from .views_customer_auth import LogoutView, RequestCodeView, VerifyCodeView
+from .views_me import (
+    MeView,
+    MyBookingCancelView,
+    MyBookingRescheduleView,
+    MyBookingsView,
+    MyMembershipView,
+    MyRedeemView,
+)
 from .views_memberships import (
     AdjustPointsView,
     MembershipView,
@@ -221,6 +230,37 @@ urlpatterns = [
         BusinessMetricsView.as_view(),
         name="admin-business-metrics",
     ),
+    # Customer-portal auth (v7) — phone+OTP gate for /s/[slug]/account
+    path(
+        "customer-auth/request-code/",
+        RequestCodeView.as_view(),
+        name="customer-auth-request-code",
+    ),
+    path(
+        "customer-auth/verify-code/",
+        VerifyCodeView.as_view(),
+        name="customer-auth-verify-code",
+    ),
+    path(
+        "customer-auth/logout/",
+        LogoutView.as_view(),
+        name="customer-auth-logout",
+    ),
+    # Customer-portal /api/me/* — gated on request.customer via middleware.
+    path("me/", MeView.as_view(), name="me-profile"),
+    path("me/bookings/", MyBookingsView.as_view(), name="me-bookings"),
+    path(
+        "me/bookings/<int:pk>/reschedule/",
+        MyBookingRescheduleView.as_view(),
+        name="me-booking-reschedule",
+    ),
+    path(
+        "me/bookings/<int:pk>/cancel/",
+        MyBookingCancelView.as_view(),
+        name="me-booking-cancel",
+    ),
+    path("me/membership/", MyMembershipView.as_view(), name="me-membership"),
+    path("me/redeem/", MyRedeemView.as_view(), name="me-redeem"),
     # Stripe webhook — confirms a booking when its deposit is paid
     path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"),
     # Twilio SMS webhook — wires SMS into the agent loop

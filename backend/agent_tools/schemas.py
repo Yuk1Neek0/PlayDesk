@@ -24,12 +24,18 @@ class TimeSlot(BaseModel):
     resource_id / resource_name identify which resource the window belongs to.
     They are optional so callers that don't tie a slot to a specific resource
     (e.g. a "nearby alternative" suggestion) can still emit a bare window.
+
+    ``quoted_price`` (v8 pricing-rules) is the engine-computed total for the
+    window as an anonymous customer (no tier discount). Surfaced so the agent
+    can say "Friday 8-10pm, PS5 Station 1, $144 with peak surcharge" instead
+    of the unadjusted ``price_per_hour * hours``.
     """
 
     start: datetime
     end: datetime
     resource_id: int | None = None
     resource_name: str | None = None
+    quoted_price: str | None = None
 
 
 class BookingConflictError(BaseModel):
@@ -116,6 +122,10 @@ class ResourceDetail(BaseModel):
     price_per_hour: float
     metadata: dict[str, Any]
     games: list[str] = Field(default_factory=list, description="Game titles available.")
+    # v8 pricing-rules: human-friendly price label. "from $50/hr" when a
+    # discount rule could apply, else "$50/hr". The agent uses this in its
+    # natural-language reply so it never quotes a stale flat rate.
+    display_price_text: str | None = None
 
 
 class GetResourceDetailsOutput(BaseModel):

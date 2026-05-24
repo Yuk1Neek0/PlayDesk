@@ -11,6 +11,7 @@
 //      design system default.
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 
 import { Icon } from "@/components/pd-ui";
 import type { QRAction, QRPublicPayload } from "@/lib/api";
@@ -140,8 +141,14 @@ export default function QRLanding({
           ))}
         </div>
 
-        <div className="pd-qr-foot">
-          {lang === "zh" ? "由 PlayDesk 提供支持" : "Powered by PlayDesk"}
+        <div className="pd-qr-foot pd-qr-foot--with-account">
+          <Link
+            href={`/s/${encodeURIComponent(store.slug)}/account`}
+            className="pd-chip pd-chip--ghost"
+          >
+            {lang === "zh" ? "我的账户" : "My account"}
+          </Link>
+          <span>{lang === "zh" ? "由 PlayDesk 提供支持" : "Powered by PlayDesk"}</span>
         </div>
       </div>
     </div>

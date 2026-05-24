@@ -65,6 +65,10 @@ class Store(models.Model):
     # next allowed boundary; urgent templates (booking_confirmation) bypass.
     quiet_hours_start = models.TimeField(default=time(22, 0))
     quiet_hours_end = models.TimeField(default=time(8, 0))
+    # v7 customer-portal: how many hours before `start_time` a customer can
+    # still self-serve cancel a booking. Inside this window the portal
+    # returns 409 and tells the customer to contact staff.
+    cancellation_lead_hours = models.PositiveIntegerField(default=24)
 
     # ----- Stripe Connect (v9 billing-payments, task #179) -----
     # Connect Standard account id (acct_…). Null until the chain owner
@@ -432,6 +436,18 @@ class Booking(models.Model):
         choices=BookingSource.choices,
         default=BookingSource.MANUAL,
     )
+    # v8 pricing-rules: total frozen at booking creation. nullable so the
+    # additive migration can ship safely; the backfill in 0014_backfill...
+    # populates every existing row before any future hard NOT NULL.
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # JSON snapshot of the line items the engine emitted at quote time.
+    # Stored as ``list[{"label": str, "amount": str, "rule_id": int|null}]``;
+    # the ``amount`` is stringified Decimal so the JSON column round-trips
+    # cleanly. v9 billing-payments reads this for receipt rendering.
+    rule_snapshot = models.JSONField(default=list, blank=True)
+    # v9 billing-payments populates this on partial refunds; v8 ships it as
+    # a zero-default placeholder so the field is available at merge time.
+    refund_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     created_at = models.DateTimeField(auto_now_add=True)
 
     # ----- Payment status (v9 billing-payments, task #181) -----
@@ -648,3 +664,60 @@ class RewardTier(models.Model):
 
     def __str__(self) -> str:
         return f"{self.store.name} #{self.position} – {self.name}"
+
+
+# ---------------------------------------------------------------------------
+# Customer-portal auth — OTP table + append-only login audit log
+# ---------------------------------------------------------------------------
+class CustomerOTP(models.Model):
+    """One pending 6-digit verification code per (phone, store).
+
+    The verify-code endpoint compares against the latest non-used,
+    non-expired row for the phone+store. A new request-code invalidates
+    any prior row by setting `used_at`, so only the freshest code is ever
+    valid. `attempts` tracks wrong-code submissions on this row; >5
+    invalidates the row regardless of code value.
+    """
+
+    phone = models.CharField(max_length=32)
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="customer_otps")
+    code = models.CharField(max_length=6)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveIntegerField(default=0)
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["phone", "store", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"CustomerOTP {self.pk} phone={self.phone} store={self.store_id}"
+
+
+class CustomerLoginAttempt(models.Model):
+    """Append-only audit log of customer login attempts.
+
+    One row per verify-code call (whether the code matched or not, and
+    whether the phone is registered or not). Staff query this for
+    suspicious activity. Never updated after insert.
+    """
+
+    phone = models.CharField(max_length=32)
+    store = models.ForeignKey(
+        Store, on_delete=models.CASCADE, related_name="customer_login_attempts"
+    )
+    success = models.BooleanField(default=False)
+    ip_address = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["phone", "store", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"LoginAttempt {self.pk} phone={self.phone} ok={self.success}"

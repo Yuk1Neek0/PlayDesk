@@ -15,6 +15,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Ref } from "react";
+import Link from "next/link";
 
 import { Icon, ResourceArt, RESOURCE_TYPE_LABEL, fmtFullDate, isoDate } from "@/components/pd-ui";
 import { HOURS, type Resource, type ResourceMeta, type ResourceType } from "@/lib/pd-data";
@@ -86,6 +87,32 @@ function createBookingScoped(slug: string, body: BookingCreate): Promise<Booking
   });
 }
 
+// v8 pricing-rules: live quote for the selected (resource, slot, duration).
+// Rendered below the time picker so the customer sees the breakdown before
+// they confirm; the same total goes back as ``expected_total_amount`` on
+// submit so the backend can 409 if a rule changed under us.
+export interface QuoteLineItem {
+  label: string;
+  amount: string;
+  rule_id: number | null;
+}
+export interface QuoteResponse {
+  base_amount: string;
+  line_items: QuoteLineItem[];
+  total_amount: string;
+  rule_snapshot: QuoteLineItem[];
+}
+
+function fetchQuoteScoped(
+  slug: string,
+  body: { resource_id: number; start_at: string; end_at: string },
+): Promise<QuoteResponse> {
+  return customerFetch<QuoteResponse>(slug, withTrailingSlash("/api/quote"), {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 // API `Resource` (freeform metadata) → the view model the design uses.
 function toViewResource(r: ApiResource): Resource {
   return {
@@ -124,6 +151,9 @@ export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
     error: false,
     data: null,
   });
+  // v8 pricing-rules — live quote for the current (resource, slot, duration).
+  const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  const [quoteChanged, setQuoteChanged] = useState(false);
 
   // Load the resource catalogue from the API once.
   useEffect(() => {
@@ -160,6 +190,35 @@ export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
     };
   }, [resource, date, storeSlug]);
 
+  // v8 pricing-rules — fetch the live quote whenever the (resource, slot,
+  // duration) triple changes. Falls back to ``null`` on error so the legacy
+  // base * hours summary still renders.
+  useEffect(() => {
+    if (!resource || !slot) {
+      setQuote(null);
+      return;
+    }
+    let cancelled = false;
+    const startHour = parseInt(slot, 10);
+    fetchQuoteScoped(storeSlug, {
+      resource_id: resource.id,
+      start_at: isoAt(date, startHour),
+      end_at: isoAt(date, startHour + duration),
+    })
+      .then((q) => {
+        if (!cancelled) {
+          setQuote(q);
+          setQuoteChanged(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setQuote(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [resource, slot, duration, date, storeSlug]);
+
   const step1 = useRef<HTMLElement>(null);
   const step2 = useRef<HTMLElement>(null);
   const step3 = useRef<HTMLElement>(null);
@@ -194,7 +253,7 @@ export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
     if (!resource || !slot || !name || !phone) return;
     setConfirmState("loading");
     const startHour = parseInt(slot, 10);
-    const body: BookingCreate = {
+    const body: BookingCreate & { expected_total_amount?: string } = {
       resource_id: resource.id,
       customer_name: name,
       customer_phone: phone,
@@ -202,6 +261,12 @@ export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
       end_time: isoAt(date, startHour + duration),
       source: "manual",
     };
+    // v8 pricing-rules — optimistic concurrency. If the engine recomputes a
+    // different total at submit time (rule edited between quote + submit),
+    // the server returns 409 with the new quote so we can re-render the
+    // breakdown and ask for confirmation.
+    if (quote) body.expected_total_amount = quote.total_amount;
+
     createBookingScoped(storeSlug, body)
       .then((booking) => {
         setConfirmedBooking({
@@ -213,17 +278,28 @@ export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
           duration,
           name,
           phone,
-          total: (parseFloat(resource.price_per_hour) * duration).toFixed(0),
+          total: quote
+            ? quote.total_amount
+            : (parseFloat(resource.price_per_hour) * duration).toFixed(0),
         });
         setConfirmState("success");
       })
       .catch((err) => {
         setConfirmState("error");
-        setErrorMsg(
-          err instanceof ApiError && err.status === 409
-            ? "That slot was just taken. Try a nearby time."
-            : "Something went wrong creating your booking. Please try again.",
-        );
+        if (err instanceof ApiError && err.status === 409) {
+          const body = err.body as { error?: string; new_quote?: QuoteResponse } | null;
+          if (body?.error === "quote_changed" && body.new_quote) {
+            setQuote(body.new_quote);
+            setQuoteChanged(true);
+            setErrorMsg(
+              `Price changed — new total ¥${body.new_quote.total_amount}. Please confirm.`,
+            );
+            return;
+          }
+          setErrorMsg("That slot was just taken. Try a nearby time.");
+          return;
+        }
+        setErrorMsg("Something went wrong creating your booking. Please try again.");
       });
   }
 
@@ -261,9 +337,11 @@ export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
     return <ConfirmationView booking={confirmedBooking} onReset={reset} />;
   }
 
-  const total = resource
-    ? (parseFloat(resource.price_per_hour) * duration).toFixed(0)
-    : "—";
+  const total = quote
+    ? quote.total_amount
+    : resource
+      ? (parseFloat(resource.price_per_hour) * duration).toFixed(0)
+      : "—";
 
   const wrapperStyle: React.CSSProperties | undefined = brand.accent
     ? ({ "--pd-accent": brand.accent, "--accent": brand.accent } as React.CSSProperties)
@@ -272,19 +350,27 @@ export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
   return (
     <div className="pd-page pd-page--booking" style={wrapperStyle}>
       <header className="pd-page-head">
-        <div className="pd-brand-logo">
-          {brand.logo_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              className="pd-brand-logo-img"
-              src={brand.logo_url}
-              alt={brand.name}
-            />
-          ) : (
-            <span className="pd-brand-mark" aria-hidden>
-              <Icon.logo size={28} />
-            </span>
-          )}
+        <div className="pd-page-head-row">
+          <div className="pd-brand-logo">
+            {brand.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                className="pd-brand-logo-img"
+                src={brand.logo_url}
+                alt={brand.name}
+              />
+            ) : (
+              <span className="pd-brand-mark" aria-hidden>
+                <Icon.logo size={28} />
+              </span>
+            )}
+          </div>
+          <Link
+            href={`/s/${encodeURIComponent(storeSlug)}/account`}
+            className="pd-chip pd-chip--ghost"
+          >
+            My account
+          </Link>
         </div>
         <div className="pd-eyebrow">Book a session</div>
         <h1 className="pd-page-title">
@@ -406,6 +492,9 @@ export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
           </div>
         </div>
         <SlotsGrid availability={availability} slot={slot} duration={duration} onPick={chooseSlot} />
+        {slot && quote && (
+          <QuoteBreakdown quote={quote} changed={quoteChanged} />
+        )}
       </Step>
 
       {/* Step 4 — Confirm */}
@@ -716,6 +805,39 @@ function ConfirmationView({
         <p className="pd-fine">
           A confirmation SMS will arrive at {booking.phone} momentarily.
         </p>
+      </div>
+    </div>
+  );
+}
+
+// v8 pricing-rules — small breakdown rendered below the time picker once
+// a slot is selected. Mirrors the admin booking-detail's snapshot table
+// shape so the customer-facing math matches what staff see.
+function QuoteBreakdown({
+  quote,
+  changed,
+}: {
+  quote: QuoteResponse;
+  changed: boolean;
+}) {
+  return (
+    <div className="pd-summary" style={{ marginTop: 16 }} data-testid="pd-quote">
+      {changed && (
+        <div className="pd-error" style={{ marginBottom: 8 }}>
+          <span className="pd-error-dot" /> Price updated — please review and confirm.
+        </div>
+      )}
+      {quote.line_items.map((li, idx) => (
+        <div className="pd-summary-row" key={`${li.label}-${idx}`}>
+          <span className="pd-summary-key">{li.label}</span>
+          <span className="pd-summary-val pd-mono">
+            {li.amount.startsWith("-") ? "" : ""}¥{li.amount}
+          </span>
+        </div>
+      ))}
+      <div className="pd-summary-row pd-summary-row--total">
+        <span className="pd-summary-key">Total</span>
+        <span className="pd-summary-val pd-mono">¥{quote.total_amount}</span>
       </div>
     </div>
   );

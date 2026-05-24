@@ -90,11 +90,22 @@ class BookingSerializer(serializers.ModelSerializer):
             "end_time",
             "status",
             "source",
+            "total_amount",
+            "rule_snapshot",
+            "refund_amount",
             "created_at",
             "payment_status",
             "deposit_amount",
         ]
-        read_only_fields = ["id", "created_at", "payment_status", "deposit_amount"]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "total_amount",
+            "rule_snapshot",
+            "refund_amount",
+            "payment_status",
+            "deposit_amount",
+        ]
 
 
 class BookingCreateSerializer(serializers.ModelSerializer):
@@ -136,7 +147,17 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         rejected with a 400. The resolved customer's canonical phone is
         also written back to the legacy `customer_phone` column so the two
         stay in sync until the legacy column is removed.
+
+        v8 pricing-rules: ``total_amount`` is stamped from a real
+        ``compute_quote`` call so the row never has a NULL ``total_amount``.
+        Task 176 wires the optimistic-concurrency ``expected_total_amount``
+        check on top of this; for now every new booking simply accepts the
+        server-computed total. Falls back to ``price_per_hour * hours`` if
+        the pricing engine isn't importable yet (defence in depth — engine
+        lives in the same epic but tests may stub it out).
         """
+        from decimal import ROUND_HALF_UP, Decimal
+
         from core.customers import UnparseablePhoneError, resolve_customer
 
         resource = validated_data["resource"]
@@ -147,9 +168,29 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 name=validated_data.get("customer_name", ""),
             )
         except UnparseablePhoneError as exc:
-            raise serializers.ValidationError({"customer_phone": str(exc)})
+            raise serializers.ValidationError({"customer_phone": str(exc)}) from None
         validated_data["customer"] = customer
         validated_data["customer_phone"] = customer.phone
+
+        # Freeze the quote on the row. Engine returns base when no rules
+        # exist, so existing tests (zero rules configured) keep their
+        # baseline of ``price_per_hour * hours``.
+        start_at = validated_data["start_time"]
+        end_at = validated_data["end_time"]
+        try:
+            from pricing.engine import compute_quote
+
+            quote = compute_quote(resource, start_at, end_at, customer=customer)
+            validated_data["total_amount"] = quote.total_amount
+            validated_data["rule_snapshot"] = [li.to_dict() for li in quote.line_items]
+        except Exception:
+            seconds = int((end_at - start_at).total_seconds())
+            hours = (Decimal(seconds) / Decimal(3600)).quantize(Decimal("0.0001"))
+            validated_data["total_amount"] = (resource.price_per_hour * hours).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            validated_data["rule_snapshot"] = []
+
         return super().create(validated_data)
 
 

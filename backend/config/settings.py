@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "agent",
     "campaigns",
     "outbound",
+    "pricing",
     "billing",
 ]
 
@@ -67,6 +68,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "core.middleware.CurrentStoreMiddleware",
+    "core.middleware.CustomerSessionMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -165,6 +167,17 @@ SITE_URL = env("SITE_URL", default="http://localhost:3000")
 # of erroring out without SMTP. Tests override to locmem via pytest-django.
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@playdesk.local")
+
+# ---------------------------------------------------------------------------
+# Caches — Django LocMem cache backs the customer-portal OTP rate-limiter.
+# Production should swap this for Redis once the workload justifies it.
+# ---------------------------------------------------------------------------
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "playdesk-default",
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Twilio — SMS channel (multi-channel epic)
