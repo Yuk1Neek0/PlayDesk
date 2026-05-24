@@ -19,6 +19,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from agent.channels.twilio_signature import verify_twilio_signature
 from agent.channels.twilio_sms import TwilioSmsAdapter
 from agent.llm_client import AnthropicClient
 from agent.loop import AgentLoop
@@ -26,26 +27,21 @@ from core.models import Conversation
 
 
 def _signature_ok(request: HttpRequest, auth_token: str) -> bool:
-    """Verify the Twilio request signature.
+    """Verify the Twilio request signature for a Django request.
 
-    Twilio's `RequestValidator` recomputes the HMAC from the full URL
-    plus the sorted form params and compares against the header. We
-    accept either ``X-Twilio-Signature`` or its lowercase variant.
+    Thin wrapper around the shared ``verify_twilio_signature`` helper that
+    pulls the signature header and absolute URL out of the Django request.
+    The shared helper is reused by the WhatsApp + Voice webhooks too.
     """
-    from twilio.request_validator import RequestValidator
-
     signature = request.META.get("HTTP_X_TWILIO_SIGNATURE") or request.META.get(
         "HTTP_X_TWILIO_SIGNATURE".lower()
     )
-    if not signature:
-        return False
     # Twilio signs against the public URL the request came in on, which
     # is `<scheme>://<host>/<path>?<query>`. Django's `build_absolute_uri`
     # composes that for us.
     url = request.build_absolute_uri()
     params = {k: v for k, v in request.POST.items()}
-    validator = RequestValidator(auth_token)
-    return validator.validate(url, params, signature)
+    return verify_twilio_signature(url, params, signature or "", auth_token)
 
 
 @csrf_exempt
