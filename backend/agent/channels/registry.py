@@ -24,6 +24,7 @@ from .outbound_base import OutboundChannelAdapter
 from .twilio_sms import TwilioSmsAdapter
 from .twilio_sms_outbound import TwilioSmsOutboundAdapter
 from .twilio_whatsapp import TwilioWhatsAppAdapter
+from .twilio_whatsapp_outbound import TwilioWhatsAppOutboundAdapter
 
 # Module-level singletons; instantiated lazily on first lookup.
 _INBOUND_ADAPTERS: dict[str, ChannelAdapter] = {}
@@ -31,12 +32,19 @@ _OUTBOUND_ADAPTERS: dict[str, OutboundChannelAdapter] = {}
 
 
 def _bootstrap() -> None:
-    """Register the built-in adapters once."""
-    if not _INBOUND_ADAPTERS:
-        _INBOUND_ADAPTERS[TwilioSmsAdapter.channel] = TwilioSmsAdapter()
-        _INBOUND_ADAPTERS[TwilioWhatsAppAdapter.channel] = TwilioWhatsAppAdapter()
-    if not _OUTBOUND_ADAPTERS:
-        _OUTBOUND_ADAPTERS[TwilioSmsOutboundAdapter.channel] = TwilioSmsOutboundAdapter()
+    """Register any missing built-in adapters.
+
+    Uses `setdefault` so a test that has called `unregister_outbound_adapter`
+    on one channel gets the default restored on the next bootstrap, without
+    clobbering test-only adapters that other tests have registered for
+    different channels.
+    """
+    _INBOUND_ADAPTERS.setdefault(TwilioSmsAdapter.channel, TwilioSmsAdapter())
+    _INBOUND_ADAPTERS.setdefault(TwilioWhatsAppAdapter.channel, TwilioWhatsAppAdapter())
+    _OUTBOUND_ADAPTERS.setdefault(TwilioSmsOutboundAdapter.channel, TwilioSmsOutboundAdapter())
+    _OUTBOUND_ADAPTERS.setdefault(
+        TwilioWhatsAppOutboundAdapter.channel, TwilioWhatsAppOutboundAdapter()
+    )
 
 
 def get_inbound_adapter(channel: str) -> ChannelAdapter:

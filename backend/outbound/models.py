@@ -18,6 +18,7 @@ from django.utils import timezone
 
 class OutboundChannel(models.TextChoices):
     SMS = "sms", "SMS"
+    WHATSAPP = "whatsapp", "WhatsApp"
     WEB_CHAT = "web_chat", "Web chat"
 
 
