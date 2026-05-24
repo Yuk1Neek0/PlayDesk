@@ -78,6 +78,8 @@ class SegmentListCreateView(ListCreateAPIView):
         store_id = self.request.query_params.get("store")
         if store_id:
             qs = qs.filter(store_id=store_id)
+        elif self.request.store is not None:
+            qs = qs.filter(store=self.request.store)
         return qs
 
     def perform_create(self, serializer):
@@ -86,18 +88,26 @@ class SegmentListCreateView(ListCreateAPIView):
 
 
 class SegmentDetailView(RetrieveUpdateDestroyAPIView):
-    """GET/PATCH/DELETE /api/admin/segments/{id}/"""
+    """GET/PATCH/DELETE /api/admin/segments/{id}/ — scoped to ``request.store``."""
 
     serializer_class = SegmentSerializer
-    queryset = Segment.objects.select_related("store", "created_by").all()
+
+    def get_queryset(self):
+        qs = Segment.objects.select_related("store", "created_by").all()
+        if self.request.store is not None:
+            qs = qs.filter(store=self.request.store)
+        return qs
 
 
 class SegmentPreviewView(APIView):
     """GET /api/admin/segments/{id}/preview/?limit=20"""
 
     def get(self, request, pk: int):
+        qs = Segment.objects.all()
+        if request.store is not None:
+            qs = qs.filter(store=request.store)
         try:
-            segment = Segment.objects.get(pk=pk)
+            segment = qs.get(pk=pk)
         except Segment.DoesNotExist:
             return Response({"detail": "Segment not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -131,6 +141,8 @@ class CampaignListCreateView(ListCreateAPIView):
         store_id = self.request.query_params.get("store")
         if store_id:
             qs = qs.filter(store_id=store_id)
+        elif self.request.store is not None:
+            qs = qs.filter(store=self.request.store)
         return qs
 
     def perform_create(self, serializer):
@@ -141,11 +153,17 @@ class CampaignListCreateView(ListCreateAPIView):
 class CampaignDetailView(RetrieveUpdateDestroyAPIView):
     """GET/PATCH/DELETE /api/admin/campaigns/{id}/.
 
-    PATCH refused with 409 once status leaves `draft`.
+    PATCH refused with 409 once status leaves `draft`. Cross-store
+    campaign ids return 404.
     """
 
     serializer_class = CampaignSerializer
-    queryset = Campaign.objects.select_related("store", "segment", "created_by", "sent_by").all()
+
+    def get_queryset(self):
+        qs = Campaign.objects.select_related("store", "segment", "created_by", "sent_by").all()
+        if self.request.store is not None:
+            qs = qs.filter(store=self.request.store)
+        return qs
 
     def update(self, request, *args, **kwargs):
         campaign = self.get_object()
@@ -154,12 +172,26 @@ class CampaignDetailView(RetrieveUpdateDestroyAPIView):
         return super().update(request, *args, **kwargs)
 
 
+def _campaign_in_store_exists(request, pk: int) -> bool:
+    """True iff a Campaign with ``pk`` exists in ``request.store`` (or any
+    store when the resolver has no store at all)."""
+    qs = Campaign.objects.filter(pk=pk)
+    if request.store is not None:
+        qs = qs.filter(store=request.store)
+    return qs.exists()
+
+
 class CampaignSendView(APIView):
-    """POST /api/admin/campaigns/{id}/send/ — requires {"confirm": true}."""
+    """POST /api/admin/campaigns/{id}/send/ — requires {"confirm": true}.
+
+    404 for cross-store ids before any side-effecting work runs.
+    """
 
     def post(self, request, pk: int):
         if request.data.get("confirm") is not True:
             return Response({"error": "confirmation_required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not _campaign_in_store_exists(request, pk):
+            return Response({"detail": "Campaign not found"}, status=status.HTTP_404_NOT_FOUND)
         user = request.user if request.user.is_authenticated else None
         try:
             summary = send_campaign(pk, sent_by=user)
@@ -176,9 +208,11 @@ class CampaignSendView(APIView):
 
 
 class CampaignCancelView(APIView):
-    """POST /api/admin/campaigns/{id}/cancel/"""
+    """POST /api/admin/campaigns/{id}/cancel/ — 404 on cross-store ids."""
 
     def post(self, request, pk: int):
+        if not _campaign_in_store_exists(request, pk):
+            return Response({"detail": "Campaign not found"}, status=status.HTTP_404_NOT_FOUND)
         try:
             campaign = cancel_campaign(pk)
         except Campaign.DoesNotExist:
@@ -189,10 +223,10 @@ class CampaignCancelView(APIView):
 
 
 class CampaignRunsListView(APIView):
-    """GET /api/admin/campaigns/{id}/runs/?status=&page="""
+    """GET /api/admin/campaigns/{id}/runs/?status=&page= — scoped to store."""
 
     def get(self, request, pk: int):
-        if not Campaign.objects.filter(pk=pk).exists():
+        if not _campaign_in_store_exists(request, pk):
             return Response({"detail": "Campaign not found"}, status=status.HTTP_404_NOT_FOUND)
         qs = CampaignRun.objects.filter(campaign_id=pk).select_related("customer").order_by("id")
         status_filter = request.query_params.get("status")
