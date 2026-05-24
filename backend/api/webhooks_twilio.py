@@ -1,12 +1,21 @@
 """
 Twilio inbound webhooks (SMS + Voice).
 
-POST /api/webhooks/twilio/sms/    — runs the agent loop and replies via TwiML.
-POST /api/webhooks/twilio/voice/  — v5 scaffold: plays a static bilingual
-                                    greeting and records a Conversation row
-                                    with ``channel='phone'``. No STT/TTS/agent
-                                    turn; see ``docs/voice-implementation-plan.md``
-                                    for the next layer of work.
+POST /api/webhooks/twilio/sms/           — runs the agent loop and replies via TwiML.
+POST /api/webhooks/twilio/voice/         — v5 scaffold: plays a static bilingual
+                                           greeting and records a Conversation row
+                                           with ``channel='phone'``. No STT/TTS/agent
+                                           turn; see
+                                           ``docs/voice-implementation-plan.md``
+                                           for the next layer of work.
+POST /api/webhooks/twilio/voice/status/  — call-status callback. Records a
+                                           Conversation row with
+                                           ``status='abandoned'`` for missed/failed
+                                           calls so the admin filter shows
+                                           attempted-but-missed calls too. Skips
+                                           ``CallStatus=completed`` to avoid
+                                           double-writing the row already created
+                                           by the answer-time voice webhook.
 
 All endpoints verify the inbound signature (mandatory — no dev-mode bypass).
 When ``TWILIO_AUTH_TOKEN`` is unset they return ``503 not_configured`` cleanly
@@ -173,8 +182,69 @@ def twilio_voice_webhook(request: HttpRequest) -> HttpResponse:
     return HttpResponse(_VOICE_GREETING_TWIML, content_type="application/xml")
 
 
+# CallStatus values that indicate the call did NOT connect to a human (or
+# to our greeting) — these are the missed-call events we record. The
+# ``completed`` value is deliberately excluded: the answer-time
+# ``twilio_voice_webhook`` already wrote that row, and Twilio fires this
+# status callback for *every* call (answered or not) so we'd double-write
+# otherwise.
+_MISSED_CALL_STATUSES: frozenset[str] = frozenset({"no-answer", "busy", "failed", "canceled"})
+
+
+@csrf_exempt
+@require_POST
+def twilio_voice_status_callback(request: HttpRequest) -> HttpResponse:
+    """Capture missed/failed call attempts as Conversation rows.
+
+    Twilio fires this webhook on every call's final ``CallStatus`` event
+    (``completed``, ``no-answer``, ``busy``, ``failed``, ``canceled``).
+    We only act on the *missed* statuses — the answered case was already
+    written by ``twilio_voice_webhook``. Returns 200 with an empty body
+    in all success paths; Twilio doesn't read the response payload on
+    status callbacks.
+
+    The phone number is configured to call this URL via Twilio's
+    "Voice & Fax → Call Status Changes" setting; see
+    ``docs/voice-implementation-plan.md`` for operator setup.
+    """
+    token = getattr(settings, "TWILIO_AUTH_TOKEN", "") or ""
+    if not token:
+        return JsonResponse({"error": "not_configured"}, status=503)
+
+    if not _signature_ok(request, token):
+        return JsonResponse({"error": "invalid_signature"}, status=403)
+
+    call_status = str(request.POST.get("CallStatus", "")).strip().lower()
+    if call_status not in _MISSED_CALL_STATUSES:
+        # ``completed`` or any unrecognised status — nothing to write.
+        # Twilio still expects a 200; an empty body is the documented
+        # ack pattern for status callbacks.
+        return HttpResponse("", content_type="text/plain")
+
+    raw_from = str(request.POST.get("From", "")).strip()
+    normalised = normalize_phone(raw_from) or raw_from
+
+    # NOTE: ``status='abandoned'`` is intentional and not (yet) in
+    # ``ConversationStatus.choices``. Mirrors the ``status='completed'``
+    # value used by the answer-time webhook — both are PRD-mandated and
+    # are written via ``save()`` which doesn't enforce TextChoices.
+    # Distinguishing answered vs. missed at read-time is the whole point
+    # of the two different values.
+    Conversation.objects.create(
+        channel="phone",
+        customer_identifier=normalised,
+        status="abandoned",
+    )
+
+    return HttpResponse("", content_type="text/plain")
+
+
 # Convenience exports so urls.py can import a single symbol per endpoint.
-__all__ = ["twilio_sms_webhook", "twilio_voice_webhook"]
+__all__ = [
+    "twilio_sms_webhook",
+    "twilio_voice_status_callback",
+    "twilio_voice_webhook",
+]
 
 
 # `json` import is kept for future JSON-based webhook variants.
