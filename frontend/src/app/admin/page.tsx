@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useCurrentStore } from "@/lib/store-context";
 import { BusinessDashboardStrip } from "@/components/admin/business-dashboard-strip";
+import { CheckInBadge } from "@/components/admin/checkin-badge";
 import {
   Icon,
   ResourceIcon,
@@ -22,8 +23,10 @@ import {
   relTime,
 } from "@/components/pd-ui";
 import {
+  adminCheckInBooking,
   adminListBookings,
   adminListConversations,
+  adminUndoCheckInBooking,
   getConversation,
   listResources,
   type Booking,
@@ -52,6 +55,7 @@ export default function AdminPage() {
   const [updatedAgo, setUpdatedAgo] = useState(0);
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
+  const [checkInFilter, setCheckInFilter] = useState<"all" | "yes" | "no">("all");
   const [search, setSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState<
     "all" | "web_chat" | "sms" | "whatsapp" | "phone" | "manual_staff"
@@ -188,6 +192,19 @@ export default function AdminPage() {
           if (dateFilter === "today" && d !== "2026-05-22") return false;
           if (dateFilter === "tomorrow" && d !== "2026-05-23") return false;
         }
+        if (checkInFilter !== "all") {
+          // v10b checkin: client-side filter — the backend honours
+          // `?checked_in=yes|no` too, but filtering in-memory keeps
+          // the existing single-fetch + poll cadence.
+          const bb = b as Booking & { checked_in_at?: string | null };
+          // BookingStatus from the OpenAPI contract pre-dates the
+          // CHECKED_IN value — compare as string until the contract
+          // regen lands.
+          const checkedIn =
+            (bb.status as string) === "checked_in" || Boolean(bb.checked_in_at);
+          if (checkInFilter === "yes" && !checkedIn) return false;
+          if (checkInFilter === "no" && checkedIn) return false;
+        }
         if (search) {
           const q = search.toLowerCase();
           const hit =
@@ -199,7 +216,7 @@ export default function AdminPage() {
         }
         return true;
       }),
-    [bookings, statusFilter, dateFilter, search, resourceById],
+    [bookings, statusFilter, dateFilter, checkInFilter, search, resourceById],
   );
 
   const stats = useMemo(() => {
@@ -371,6 +388,16 @@ export default function AdminPage() {
                     ["tomorrow", "Tomorrow"],
                   ]}
                 />
+                <FilterChips
+                  label="Check-in"
+                  value={checkInFilter}
+                  onChange={(v) => setCheckInFilter(v as "all" | "yes" | "no")}
+                  options={[
+                    ["all", "All"],
+                    ["no", "Not yet"],
+                    ["yes", "Checked in"],
+                  ]}
+                />
               </div>
             </div>
 
@@ -381,6 +408,7 @@ export default function AdminPage() {
                 <div className="pd-th">Resource</div>
                 <div className="pd-th">When</div>
                 <div className="pd-th">Status</div>
+                <div className="pd-th">Check-in</div>
                 <div className="pd-th">Source</div>
                 <div className="pd-th pd-th--right">Created</div>
               </div>
@@ -412,6 +440,16 @@ export default function AdminPage() {
                     </div>
                     <div className="pd-td">
                       <StatusBadge status={b.status} />
+                    </div>
+                    <div className="pd-td">
+                      <CheckInCell
+                        booking={b}
+                        onUpdated={(updated) =>
+                          setBookings((bs) =>
+                            bs.map((row) => (row.id === updated.id ? updated : row)),
+                          )
+                        }
+                      />
                     </div>
                     <div className="pd-td">
                       <SourceBadge source={b.source} />
@@ -529,6 +567,70 @@ function PreviewMsg({
     <div className={`pd-pmsg pd-pmsg--${role}`}>
       {tool && <span className="pd-pmsg-tool">{tool}</span>}
       <div className="pd-pmsg-text">{text}</div>
+    </div>
+  );
+}
+
+// v10b checkin — badge + inline manual check-in / undo button. Confirmed
+// bookings show "Manual check-in", checked-in bookings show "Undo".
+// Buttons POST through `adminCheckInBooking` / `adminUndoCheckInBooking`
+// and bubble the updated row up so the table re-renders without a poll.
+function CheckInCell({
+  booking,
+  onUpdated,
+}: {
+  booking: Booking;
+  onUpdated: (b: Booking) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const b = booking as Booking & { checked_in_at?: string | null };
+  async function manualCheckIn() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const updated = await adminCheckInBooking(booking.id);
+      onUpdated(updated);
+    } catch {
+      /* swallow — next poll surfaces server state */
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function undoCheckIn() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const updated = await adminUndoCheckInBooking(booking.id);
+      onUpdated(updated);
+    } catch {
+      /* swallow — next poll surfaces server state */
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="pd-td-checkin">
+      <CheckInBadge checkedInAt={b.checked_in_at ?? null} status={b.status} />
+      {b.status === "confirmed" && (
+        <button
+          className="pd-btn pd-btn--ghost pd-btn--sm"
+          onClick={manualCheckIn}
+          disabled={busy}
+          data-testid={`manual-checkin-${booking.id}`}
+        >
+          Check in
+        </button>
+      )}
+      {(b.status as string) === "checked_in" && (
+        <button
+          className="pd-btn pd-btn--ghost pd-btn--sm"
+          onClick={undoCheckIn}
+          disabled={busy}
+          data-testid={`undo-checkin-${booking.id}`}
+        >
+          Undo
+        </button>
+      )}
     </div>
   );
 }
