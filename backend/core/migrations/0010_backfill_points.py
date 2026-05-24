@@ -21,7 +21,12 @@ def _seed_backfill(apps, schema_editor) -> None:
     from core.memberships import award_points
     from core.models import Customer, PointTransaction, Store
 
-    points_by_store: dict[int, int] = {s.id: int(s.points_per_booking) for s in Store.objects.all()}
+    # Use values_list so any post-migration field added to Store (e.g. v7's
+    # `cancellation_lead_hours`) doesn't get SELECT'd against a column the
+    # schema doesn't yet have at this migration's apply time.
+    points_by_store: dict[int, int] = {
+        sid: int(ppb) for sid, ppb in Store.objects.values_list("id", "points_per_booking")
+    }
 
     for customer in Customer.objects.all().only("id", "store_id", "total_visits"):
         if PointTransaction.objects.filter(customer_id=customer.id).exists():

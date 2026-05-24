@@ -13,9 +13,22 @@ North store gets a slimmer set of resources (2 PS5 stations + 1
 private room) and the default 4 QR actions.
 """
 
-from django.core.management.base import BaseCommand
+from datetime import timedelta
 
-from core.models import GameMenu, QRAction, Resource, Store
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+
+from core.memberships import award_points
+from core.models import (
+    Booking,
+    BookingStatus,
+    Customer,
+    GameMenu,
+    QRAction,
+    Resource,
+    Reward,
+    Store,
+)
 
 # Each entry: (lookup-name, defaults, resources, qr_actions, game_menu).
 # The slug is set explicitly so URL paths (`/s/<slug>/book`, `/qr/<slug>`)
@@ -193,7 +206,67 @@ class Command(BaseCommand):
     def handle(self, *args, **options) -> None:
         for store_data in STORES_TO_SEED:
             self._seed_store(store_data)
+        # v7 customer-portal e2e: a stable customer-with-bookings-and-reward
+        # at Flagship so customer-portal.e2e.ts can drive the full flow
+        # against deterministic data.
+        self._seed_customer_portal_fixture()
         self.stdout.write(self.style.SUCCESS("Seed complete."))
+
+    def _seed_customer_portal_fixture(self) -> None:
+        flagship = Store.objects.filter(slug="playdesk-flagship").first()
+        if flagship is None:
+            return
+
+        e2e_customer, _ = Customer.objects.update_or_create(
+            store=flagship,
+            phone="+15551234567",
+            defaults={"name": "E2E Customer"},
+        )
+
+        # Two upcoming bookings — pick a resource at Flagship for both.
+        # Idempotent: if the customer already has >=2 upcoming bookings,
+        # leave them alone (avoids the GIST overlap constraint firing on
+        # a re-seed against a shifted `now()`).
+        resource = flagship.resources.order_by("id").first()
+        if resource is not None:
+            existing_upcoming = Booking.objects.filter(
+                customer=e2e_customer,
+                start_time__gt=timezone.now(),
+            ).count()
+            if existing_upcoming < 2:
+                now = timezone.now()
+                for offset_h, length_h in [(48, 2), (96, 2)]:
+                    start = now + timedelta(hours=offset_h)
+                    try:
+                        Booking.objects.create(
+                            resource=resource,
+                            customer=e2e_customer,
+                            customer_name=e2e_customer.name,
+                            customer_phone=e2e_customer.phone,
+                            start_time=start,
+                            end_time=start + timedelta(hours=length_h),
+                            status=BookingStatus.CONFIRMED,
+                        )
+                    except Exception:
+                        # Overlap with another booking — silently skip
+                        # so re-seeding stays idempotent.
+                        pass
+
+        # An affordable reward (5 pts) the customer can redeem in the e2e test.
+        Reward.objects.update_or_create(
+            store=flagship,
+            name="E2E reward",
+            defaults={"cost_points": 5, "enabled": True, "description": "Test reward"},
+        )
+
+        # Seed enough points so the e2e test can redeem it. Use a fixed
+        # reference so re-seeding doesn't double-credit.
+        from core.models import PointTransaction
+
+        if not PointTransaction.objects.filter(
+            customer=e2e_customer, reference="e2e-seed"
+        ).exists():
+            award_points(e2e_customer, 100, "adjustment", reference="e2e-seed")
 
     def _seed_store(self, data: dict) -> None:
         # update_or_create on the explicit slug — slug is unique, so this is

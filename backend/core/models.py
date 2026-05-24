@@ -47,6 +47,10 @@ class Store(models.Model):
     # next allowed boundary; urgent templates (booking_confirmation) bypass.
     quiet_hours_start = models.TimeField(default=time(22, 0))
     quiet_hours_end = models.TimeField(default=time(8, 0))
+    # v7 customer-portal: how many hours before `start_time` a customer can
+    # still self-serve cancel a booking. Inside this window the portal
+    # returns 409 and tells the customer to contact staff.
+    cancellation_lead_hours = models.PositiveIntegerField(default=24)
 
     class Meta:
         ordering = ["name"]
@@ -578,3 +582,60 @@ class RewardTier(models.Model):
 
     def __str__(self) -> str:
         return f"{self.store.name} #{self.position} – {self.name}"
+
+
+# ---------------------------------------------------------------------------
+# Customer-portal auth — OTP table + append-only login audit log
+# ---------------------------------------------------------------------------
+class CustomerOTP(models.Model):
+    """One pending 6-digit verification code per (phone, store).
+
+    The verify-code endpoint compares against the latest non-used,
+    non-expired row for the phone+store. A new request-code invalidates
+    any prior row by setting `used_at`, so only the freshest code is ever
+    valid. `attempts` tracks wrong-code submissions on this row; >5
+    invalidates the row regardless of code value.
+    """
+
+    phone = models.CharField(max_length=32)
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="customer_otps")
+    code = models.CharField(max_length=6)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveIntegerField(default=0)
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["phone", "store", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"CustomerOTP {self.pk} phone={self.phone} store={self.store_id}"
+
+
+class CustomerLoginAttempt(models.Model):
+    """Append-only audit log of customer login attempts.
+
+    One row per verify-code call (whether the code matched or not, and
+    whether the phone is registered or not). Staff query this for
+    suspicious activity. Never updated after insert.
+    """
+
+    phone = models.CharField(max_length=32)
+    store = models.ForeignKey(
+        Store, on_delete=models.CASCADE, related_name="customer_login_attempts"
+    )
+    success = models.BooleanField(default=False)
+    ip_address = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["phone", "store", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"LoginAttempt {self.pk} phone={self.phone} ok={self.success}"

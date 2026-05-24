@@ -15,6 +15,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Ref } from "react";
+import Link from "next/link";
 
 import { Icon, ResourceArt, RESOURCE_TYPE_LABEL, fmtFullDate, isoDate } from "@/components/pd-ui";
 import { HOURS, type Resource, type ResourceMeta, type ResourceType } from "@/lib/pd-data";
@@ -349,19 +350,27 @@ export default function BookingPage({ brand, storeSlug }: BookingPageProps) {
   return (
     <div className="pd-page pd-page--booking" style={wrapperStyle}>
       <header className="pd-page-head">
-        <div className="pd-brand-logo">
-          {brand.logo_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              className="pd-brand-logo-img"
-              src={brand.logo_url}
-              alt={brand.name}
-            />
-          ) : (
-            <span className="pd-brand-mark" aria-hidden>
-              <Icon.logo size={28} />
-            </span>
-          )}
+        <div className="pd-page-head-row">
+          <div className="pd-brand-logo">
+            {brand.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                className="pd-brand-logo-img"
+                src={brand.logo_url}
+                alt={brand.name}
+              />
+            ) : (
+              <span className="pd-brand-mark" aria-hidden>
+                <Icon.logo size={28} />
+              </span>
+            )}
+          </div>
+          <Link
+            href={`/s/${encodeURIComponent(storeSlug)}/account`}
+            className="pd-chip pd-chip--ghost"
+          >
+            My account
+          </Link>
         </div>
         <div className="pd-eyebrow">Book a session</div>
         <h1 className="pd-page-title">
