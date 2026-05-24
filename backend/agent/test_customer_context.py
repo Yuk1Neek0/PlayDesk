@@ -94,3 +94,39 @@ def test_customer_with_no_name_skips_name_line(store):
     assert block is not None
     assert "Name:" not in block
     assert "Total visits: 0" in block
+
+
+# ---------------------------------------------------------------------------
+# v11c retention-scoring — cohort line in customer context
+# ---------------------------------------------------------------------------
+
+
+def test_cohort_line_present_for_at_risk(store):
+    """A customer with cohort=at_risk should expose the cohort to the agent."""
+    Customer.objects.create(
+        store=store,
+        phone="+15550022222",
+        name="At Risk Alice",
+        total_visits=8,
+        last_visit_at=timezone.now() - timedelta(days=45),
+        cohort="at_risk",
+    )
+    conv = _make_conversation(store, "+15550022222")
+    block = _build_customer_context(conv)
+    assert block is not None
+    assert "Cohort: at_risk" in block
+
+
+def test_cohort_line_suppressed_for_new(store):
+    """A "new" cohort is noise alongside total_visits=0 — skip the line."""
+    Customer.objects.create(
+        store=store,
+        phone="+15550033333",
+        name="New Bob",
+        total_visits=0,
+        cohort="new",
+    )
+    conv = _make_conversation(store, "+15550033333")
+    block = _build_customer_context(conv)
+    assert block is not None
+    assert "Cohort:" not in block

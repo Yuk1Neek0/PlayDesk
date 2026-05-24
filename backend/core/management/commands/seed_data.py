@@ -213,6 +213,12 @@ class Command(BaseCommand):
         # v10a staff-auth: seed a known staff login so developers and
         # Playwright can sign into /admin immediately after a fresh boot.
         self._seed_demo_staff_user()
+        # v11c retention-scoring: seed cohort fixtures so the admin
+        # /customers page has dormant + opt-out rows for the e2e test to
+        # drive. Runs the sweeper at the end to populate cohort labels
+        # deterministically from last_visit_at without needing a separate
+        # cron invocation in CI.
+        self._seed_retention_fixtures()
         self.stdout.write(self.style.SUCCESS("Seed complete."))
 
     def _seed_demo_staff_user(self) -> None:
@@ -292,6 +298,54 @@ class Command(BaseCommand):
             customer=e2e_customer, reference="e2e-seed"
         ).exists():
             award_points(e2e_customer, 100, "adjustment", reference="e2e-seed")
+
+    def _seed_retention_fixtures(self) -> None:
+        """Seed Flagship cohort customers + run the sweeper (v11c).
+
+        Builds 9 customers across the cohort spectrum so the admin
+        /customers page has a dormant population (incl. one with
+        sms_opt_out) for retention.e2e.ts to drive. Idempotent: re-runs
+        update last_visit_at against `now()` and re-derive cohort.
+        """
+        from django.core.management import call_command
+
+        flagship = Store.objects.filter(slug="playdesk-flagship").first()
+        if flagship is None:
+            return
+
+        now = timezone.now()
+        # (phone-suffix, name, visits, days-since-last-visit, tags)
+        # Spread across cohorts. Phones use a unique prefix so they
+        # don't collide with the customer-portal fixture (+1555123____)
+        # or any user-created bookings.
+        fixtures = [
+            ("4400001", "Retention Active A", 5, 5, []),
+            ("4400002", "Retention Active B", 3, 12, []),
+            ("4400003", "Retention At-risk A", 6, 40, []),
+            ("4400004", "Retention At-risk B", 4, 50, []),
+            ("4400005", "Retention Dormant A", 8, 70, []),
+            ("4400006", "Retention Dormant B", 6, 80, []),
+            ("4400007", "Retention Dormant OptOut", 7, 75, ["sms_opt_out"]),
+            ("4400008", "Retention Lost", 4, 120, []),
+            ("4400009", "Retention New", 0, None, []),
+        ]
+        for suffix, name, visits, days_ago, tags in fixtures:
+            phone = f"+1416{suffix}"
+            last_visit_at = now - timedelta(days=days_ago) if days_ago is not None else None
+            Customer.objects.update_or_create(
+                store=flagship,
+                phone=phone,
+                defaults={
+                    "name": name,
+                    "total_visits": visits,
+                    "last_visit_at": last_visit_at,
+                    "tags": tags,
+                },
+            )
+
+        # Derive cohort + churn_score from the freshly-seeded last_visit_at.
+        # Scoped to flagship so other-store data stays stable across reseeds.
+        call_command("recompute_retention", store=flagship.slug)
 
     def _seed_store(self, data: dict) -> None:
         # update_or_create on the explicit slug — slug is unique, so this is
