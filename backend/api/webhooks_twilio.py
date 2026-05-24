@@ -1,7 +1,11 @@
 """
-Twilio inbound webhooks (SMS + Voice).
+Twilio inbound webhooks (SMS + WhatsApp + Voice).
 
 POST /api/webhooks/twilio/sms/           — runs the agent loop and replies via TwiML.
+POST /api/webhooks/twilio/whatsapp/      — same shape as SMS, with the WhatsApp
+                                           adapter parsing the ``whatsapp:+E.164``
+                                           ``From`` field into a bare E.164
+                                           ``customer_identifier``.
 POST /api/webhooks/twilio/voice/         — v5 scaffold: plays a static bilingual
                                            greeting and records a Conversation row
                                            with ``channel='phone'``. No STT/TTS/agent
@@ -33,6 +37,7 @@ from django.views.decorators.http import require_POST
 
 from agent.channels.twilio_signature import verify_twilio_signature
 from agent.channels.twilio_sms import TwilioSmsAdapter
+from agent.channels.twilio_whatsapp import TwilioWhatsAppAdapter
 from agent.llm_client import AnthropicClient
 from agent.loop import AgentLoop
 from core.models import Conversation
@@ -44,7 +49,7 @@ def _signature_ok(request: HttpRequest, auth_token: str) -> bool:
 
     Thin wrapper around the shared ``verify_twilio_signature`` helper that
     pulls the signature header and absolute URL out of the Django request.
-    The shared helper is reused by the WhatsApp + Voice webhooks too.
+    The shared helper is reused by the SMS, WhatsApp, and Voice webhooks.
     """
     signature = request.META.get("HTTP_X_TWILIO_SIGNATURE") or request.META.get(
         "HTTP_X_TWILIO_SIGNATURE".lower()
@@ -89,6 +94,60 @@ def twilio_sms_webhook(request: HttpRequest) -> HttpResponse:
 
     # Run the agent loop synchronously and collect the final reply text.
     # No event callback — SMS is one-shot, no streaming.
+    loop = AgentLoop(
+        llm_client=AnthropicClient(),
+        rag_chunks=inbound.rag_chunks,
+    )
+    try:
+        summary = loop.run(conversation=conv, user_content=inbound.text)
+        final_text = summary.get("text") or ""
+        booking_id = summary.get("booking_id")
+        iteration_count = summary.get("iteration_count", 0)
+    except Exception:  # noqa: BLE001
+        final_text = "Sorry — I hit a problem just now. A human will follow up."
+        booking_id = None
+        iteration_count = 0
+
+    reply = adapter.format_outbound(
+        final_text,
+        metadata={"booking_id": booking_id, "iteration_count": iteration_count},
+    )
+    return HttpResponse(reply, content_type="application/xml")
+
+
+@csrf_exempt
+@require_POST
+def twilio_whatsapp_webhook(request: HttpRequest) -> HttpResponse:
+    """Inbound WhatsApp messages from Twilio.
+
+    Structurally identical to `twilio_sms_webhook` — the only swaps are
+    the channel tag (`"whatsapp"`) and the adapter used to parse Twilio's
+    `whatsapp:+E.164` `From` field into a bare E.164 `customer_identifier`.
+    """
+    token = getattr(settings, "TWILIO_AUTH_TOKEN", "") or ""
+    if not token:
+        return JsonResponse({"error": "not_configured"}, status=503)
+
+    if not _signature_ok(request, token):
+        return JsonResponse({"error": "invalid_signature"}, status=403)
+
+    form_payload = {k: v for k, v in request.POST.items()}
+    adapter = TwilioWhatsAppAdapter()
+    inbound = adapter.normalize_inbound(form_payload)
+
+    if not inbound.text:
+        # Empty body → ack with empty TwiML so Twilio doesn't retry.
+        return HttpResponse(adapter.format_outbound(""), content_type="application/xml")
+
+    # One conversation per (channel, customer_identifier). The WhatsApp
+    # `customer_identifier` is the bare E.164 the adapter produced after
+    # stripping the `whatsapp:` prefix — same shape as SMS.
+    conv, _ = Conversation.objects.get_or_create(
+        customer_identifier=inbound.customer_identifier,
+        channel="whatsapp",
+        defaults={},
+    )
+
     loop = AgentLoop(
         llm_client=AnthropicClient(),
         rag_chunks=inbound.rag_chunks,
@@ -244,6 +303,7 @@ __all__ = [
     "twilio_sms_webhook",
     "twilio_voice_status_callback",
     "twilio_voice_webhook",
+    "twilio_whatsapp_webhook",
 ]
 
 
