@@ -72,7 +72,12 @@ class StandardPagination(PageNumberPagination):
 
 
 class ResourceListView(ListAPIView):
-    """GET /api/resources/ — list resources, optionally filtered by type."""
+    """GET /api/resources/ — list resources, optionally filtered by type.
+
+    Scoped to ``request.store`` by default; an explicit ``?store_id=`` query
+    string still wins so legacy callers (the agent tool dispatch path, the
+    booking page that knows its own store) keep working.
+    """
 
     serializer_class = ResourceSerializer
     pagination_class = StandardPagination
@@ -90,14 +95,21 @@ class ResourceListView(ListAPIView):
         store_id = self.request.query_params.get("store_id")
         if store_id:
             qs = qs.filter(store_id=store_id)
+        elif self.request.store is not None:
+            qs = qs.filter(store=self.request.store)
         return qs
 
 
 class ResourceDetailView(RetrieveAPIView):
-    """GET /api/resources/{id}/"""
+    """GET /api/resources/{id}/ — 404 when the resource belongs to another store."""
 
     serializer_class = ResourceSerializer
-    queryset = Resource.objects.select_related("store").all()
+
+    def get_queryset(self):
+        qs = Resource.objects.select_related("store").all()
+        if self.request.store is not None:
+            qs = qs.filter(store=self.request.store)
+        return qs
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +246,8 @@ class BookingListCreateView(ListCreateAPIView):
 
     def get_queryset(self):
         qs = Booking.objects.select_related("resource", "conversation").all()
+        if self.request.store is not None:
+            qs = qs.filter(resource__store=self.request.store)
         params = self.request.query_params
 
         resource_id = params.get("resource_id")
@@ -279,11 +293,18 @@ class BookingListCreateView(ListCreateAPIView):
 
 
 class BookingDetailView(APIView):
-    """GET PATCH DELETE /api/bookings/{id}/"""
+    """GET PATCH DELETE /api/bookings/{id}/ — scoped to ``request.store``.
+
+    Cross-store ids return 404 so the response can't be used to enumerate
+    bookings in other locations.
+    """
 
     def _get_booking(self, pk):
+        qs = Booking.objects.select_related("resource", "conversation")
+        if self.request.store is not None:
+            qs = qs.filter(resource__store=self.request.store)
         try:
-            return Booking.objects.select_related("resource", "conversation").get(pk=pk)
+            return qs.get(pk=pk)
         except Booking.DoesNotExist:
             return None
 
@@ -355,13 +376,19 @@ class ConversationDetailView(RetrieveAPIView):
 
 
 class AdminConversationListView(ListAPIView):
-    """GET /api/admin/conversations/ — staff visibility, newest first."""
+    """GET /api/admin/conversations/ — staff visibility, newest first.
+
+    Scoped to ``request.store`` so each location sees only its own
+    conversations. Backed by ``Conversation.store`` (task #159).
+    """
 
     serializer_class = ConversationSerializer
     pagination_class = StandardPagination
 
     def get_queryset(self):
         qs = Conversation.objects.all().order_by("-started_at")
+        if self.request.store is not None:
+            qs = qs.filter(store=self.request.store)
         conv_status = self.request.query_params.get("status")
         if conv_status:
             qs = qs.filter(status=conv_status)
@@ -376,13 +403,18 @@ class AdminConversationListView(ListAPIView):
 
 
 class AdminBookingListView(ListAPIView):
-    """GET /api/admin/bookings/ — staff visibility, newest first."""
+    """GET /api/admin/bookings/ — staff visibility, newest first.
+
+    Scoped to ``request.store`` via the ``resource__store`` chain.
+    """
 
     serializer_class = BookingSerializer
     pagination_class = StandardPagination
 
     def get_queryset(self):
         qs = Booking.objects.select_related("resource", "conversation").order_by("-created_at")
+        if self.request.store is not None:
+            qs = qs.filter(resource__store=self.request.store)
         params = self.request.query_params
 
         booking_status = params.get("status")
@@ -426,6 +458,8 @@ class AdminCustomerListView(ListAPIView):
         from django.db.models import Q
 
         qs = Customer.objects.all()
+        if self.request.store is not None:
+            qs = qs.filter(store=self.request.store)
         q = self.request.query_params.get("q", "").strip()
         if q:
             normalized = normalize_phone(q)
@@ -438,19 +472,35 @@ class AdminCustomerListView(ListAPIView):
 
 
 class AdminCustomerDetailView(RetrieveAPIView):
-    """GET /api/admin/customers/{id}/ — profile + last 50 visits + all notes."""
+    """GET /api/admin/customers/{id}/ — profile + last 50 visits + all notes.
+
+    Cross-store ids return 404 — a customer that belongs to another store
+    is indistinguishable from a missing one so the response can't leak
+    other stores' customer ids.
+    """
 
     serializer_class = CustomerDetailSerializer
-    queryset = Customer.objects.prefetch_related("notes", "notes__author").all()
+
+    def get_queryset(self):
+        qs = Customer.objects.prefetch_related("notes", "notes__author").all()
+        if self.request.store is not None:
+            qs = qs.filter(store=self.request.store)
+        return qs
 
 
 class AdminCustomerNoteCreateView(APIView):
     """POST /api/admin/customers/{id}/notes/ — add a note attributed to the
-    authenticated staff user (or anonymous if no session)."""
+    authenticated staff user (or anonymous if no session).
+
+    Cross-store customer ids return 404.
+    """
 
     def post(self, request, pk: int):
+        qs = Customer.objects.all()
+        if request.store is not None:
+            qs = qs.filter(store=request.store)
         try:
-            customer = Customer.objects.get(pk=pk)
+            customer = qs.get(pk=pk)
         except Customer.DoesNotExist:
             return Response({"detail": "Customer not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -471,6 +521,10 @@ class QRActionListCreateView(APIView):
 
     Single endpoint because the list and create payloads are tightly
     coupled (POST returns the created row; both use QRActionSerializer).
+
+    Defaults to ``request.store`` when ``?store=`` / ``store`` body field is
+    omitted, so admin clients with a current store context don't have to
+    repeat it on every call.
     """
 
     def _get_store_id(self, request) -> int | None:
@@ -487,11 +541,15 @@ class QRActionListCreateView(APIView):
         qs = QRAction.objects.all()
         if store_id is not None:
             qs = qs.filter(store_id=store_id)
+        elif request.store is not None:
+            qs = qs.filter(store=request.store)
         qs = qs.order_by("store_id", "position")
         return Response(QRActionSerializer(qs, many=True).data)
 
     def post(self, request):
         store_id = self._get_store_id(request)
+        if store_id is None and request.store is not None:
+            store_id = request.store.pk
         if store_id is None:
             return Response({"store": "store id is required"}, status=status.HTTP_400_BAD_REQUEST)
         try:
@@ -520,11 +578,17 @@ class QRActionDetailView(APIView):
 
     PATCH supports `position` reorder — when set, the whole store's
     actions are re-positioned atomically so positions stay contiguous.
+
+    Scoped to ``request.store`` — actions belonging to another store
+    return 404 to keep ids non-enumerable across locations.
     """
 
     def _get_action(self, pk: int) -> QRAction | None:
+        qs = QRAction.objects.select_related("store")
+        if self.request.store is not None:
+            qs = qs.filter(store=self.request.store)
         try:
-            return QRAction.objects.select_related("store").get(pk=pk)
+            return qs.get(pk=pk)
         except QRAction.DoesNotExist:
             return None
 
@@ -616,6 +680,8 @@ class QRAnalyticsView(APIView):
             store_id = int(request.query_params.get("store") or 0) or None
         except (TypeError, ValueError):
             store_id = None
+        if store_id is None and request.store is not None:
+            store_id = request.store.pk
         try:
             days = max(1, min(365, int(request.query_params.get("days", 7))))
         except (TypeError, ValueError):

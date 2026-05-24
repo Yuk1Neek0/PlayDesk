@@ -13,8 +13,6 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Store
-
 # Tiny CSS-value grammar for `Store.brand.accent`. We accept the three formats
 # actually documented for the field (oklch(...), #RRGGBB, rgb(...)). Anything
 # else — including `javascript:`, raw words, malformed parens — is rejected and
@@ -29,17 +27,19 @@ def _validated_accent(raw: object) -> str | None:
 
 
 class StoreBrandView(APIView):
-    """GET /api/public/store-brand/ — default store's branding fields.
+    """GET /api/public/store-brand/ — current store's branding fields.
 
-    Single-store assumption: returns ``Store.objects.first()`` (matches the
-    project's existing convention; multi-location URL routing is v6).
+    The store is resolved by ``CurrentStoreMiddleware`` — URL kwarg (when
+    served under ``/s/<slug>/``) → header → cookie → alphabetically-first
+    fallback. The fallback preserves the legacy single-store behaviour for
+    callers without a slug context.
     """
 
     authentication_classes: list = []
     permission_classes: list = []
 
     def get(self, request):
-        store = Store.objects.first()
+        store = request.store
         if store is None:
             payload = {"name": "PlayDesk", "logo_url": None, "accent": None}
         else:
