@@ -305,6 +305,10 @@ class CustomerSummarySerializer(serializers.ModelSerializer):
             "total_visits",
             "last_visit_at",
             "created_at",
+            # v11c retention-scoring — derived nightly by `recompute_retention`.
+            "cohort",
+            "churn_score",
+            "retention_updated_at",
         ]
         read_only_fields = fields
 
