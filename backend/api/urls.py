@@ -52,7 +52,7 @@ from .views_memberships import (
     RewardViewSet,
 )
 from .views_outbound import OutboundMessageListView
-from .webhooks_twilio import twilio_sms_webhook
+from .webhooks_twilio import twilio_sms_webhook, twilio_voice_webhook
 
 # DRF router for the rewards/tiers CRUD ViewSets.
 _router = DefaultRouter()
@@ -193,6 +193,8 @@ urlpatterns = [
     path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"),
     # Twilio SMS webhook — wires SMS into the agent loop
     path("webhooks/twilio/sms/", twilio_sms_webhook, name="twilio-sms-webhook"),
+    # Twilio Voice webhook — v5 scaffold; static TwiML + phone Conversation row
+    path("webhooks/twilio/voice/", twilio_voice_webhook, name="twilio-voice-webhook"),
 ]
 
 # Rewards / tiers CRUD — DefaultRouter generates list+detail routes.

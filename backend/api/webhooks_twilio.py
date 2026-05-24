@@ -1,13 +1,16 @@
 """
-Twilio SMS webhook.
+Twilio inbound webhooks (SMS + Voice).
 
-POST /api/webhooks/twilio/sms/
+POST /api/webhooks/twilio/sms/    — runs the agent loop and replies via TwiML.
+POST /api/webhooks/twilio/voice/  — v5 scaffold: plays a static bilingual
+                                    greeting and records a Conversation row
+                                    with ``channel='phone'``. No STT/TTS/agent
+                                    turn; see ``docs/voice-implementation-plan.md``
+                                    for the next layer of work.
 
-Verifies the inbound signature (mandatory — no dev-mode bypass), runs
-the agent loop synchronously over the normalised message, and returns
-TwiML carrying the assembled assistant reply. When ``TWILIO_AUTH_TOKEN``
-is unset the endpoint returns ``503 not_configured`` cleanly so CI
-without secrets stays green.
+All endpoints verify the inbound signature (mandatory — no dev-mode bypass).
+When ``TWILIO_AUTH_TOKEN`` is unset they return ``503 not_configured`` cleanly
+so CI without secrets stays green.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from agent.channels.twilio_sms import TwilioSmsAdapter
 from agent.llm_client import AnthropicClient
 from agent.loop import AgentLoop
 from core.models import Conversation
+from core.phone import normalize_phone
 
 
 def _signature_ok(request: HttpRequest, auth_token: str) -> bool:
@@ -97,8 +101,80 @@ def twilio_sms_webhook(request: HttpRequest) -> HttpResponse:
     return HttpResponse(reply, content_type="application/xml")
 
 
-# Convenience export so urls.py can import a single symbol.
-__all__ = ["twilio_sms_webhook"]
+# ---------------------------------------------------------------------------
+# Twilio Voice — v5 scaffold
+# ---------------------------------------------------------------------------
+# The greeting body is defined here (not loaded from a template) so the
+# message is version-controlled and editable in one place. The voice +
+# language pairs are Twilio-supported combinations: Polly.Joanna speaks
+# en-US, Polly.Zhiyu speaks cmn-CN. The bilingual greeting matches the
+# agent's existing locale support.
+_VOICE_GREETING_TWIML = (
+    '<?xml version="1.0" encoding="UTF-8"?>'
+    "<Response>"
+    '<Say voice="Polly.Joanna" language="en-US">'
+    "You&#39;ve reached PlayDesk. Voice is coming soon &#8212; please text us "
+    "at this number for now."
+    "</Say>"
+    '<Say voice="Polly.Zhiyu" language="cmn-CN">'
+    "&#20013;&#25991;&#24744;&#20063;&#21487;&#20197;&#30332;&#30701;&#20449;"
+    "&#32102;&#25105;&#20497;&#12290;"
+    "</Say>"
+    "</Response>"
+)
+
+
+@csrf_exempt
+@require_POST
+def twilio_voice_webhook(request: HttpRequest) -> HttpResponse:
+    """Answer an inbound Twilio Voice call with static bilingual TwiML.
+
+    Records a ``Conversation`` row with ``channel='phone'`` so the admin
+    chip filter for phone calls finally has data to filter. No STT, no
+    TTS, no agent turn — that's the whole point of this v5 scaffold. See
+    ``docs/voice-implementation-plan.md`` for what comes next.
+    """
+    token = getattr(settings, "TWILIO_AUTH_TOKEN", "") or ""
+    if not token:
+        return JsonResponse({"error": "not_configured"}, status=503)
+
+    if not _signature_ok(request, token):
+        return JsonResponse({"error": "invalid_signature"}, status=403)
+
+    # Twilio's Voice webhook posts ``From`` (E.164 caller number) and
+    # ``CallSid`` among other fields. We only need ``From`` to record the
+    # conversation — the rest is logged via Twilio's own dashboards.
+    raw_from = str(request.POST.get("From", "")).strip()
+    normalised = normalize_phone(raw_from) or raw_from
+
+    # Best-effort Customer lookup so the side-effect of recording a phone
+    # row also surfaces existing customer context downstream. We don't
+    # store the FK directly (Conversation has no ``customer`` field in v5)
+    # — the customer is resolved at read-time via ``customer_identifier``,
+    # which already matches the retention slice's E.164 normalisation.
+    # Looking up here keeps the linkage explicit and reserves the spot for
+    # a future migration that adds the FK without changing this view.
+    from core.models import Customer
+
+    Customer.objects.filter(phone=normalised).first()
+
+    # NOTE: ``status='completed'`` is intentional and not (yet) in
+    # ``ConversationStatus.choices``. The PRD requires this exact value
+    # for the answer-time row so the admin filter can distinguish
+    # answered calls from missed-call rows (which the status-callback
+    # view writes with ``status='abandoned'``). Django's TextChoices
+    # validation is opt-in via ``full_clean()`` so ``save()`` accepts it.
+    Conversation.objects.create(
+        channel="phone",
+        customer_identifier=normalised,
+        status="completed",
+    )
+
+    return HttpResponse(_VOICE_GREETING_TWIML, content_type="application/xml")
+
+
+# Convenience exports so urls.py can import a single symbol per endpoint.
+__all__ = ["twilio_sms_webhook", "twilio_voice_webhook"]
 
 
 # `json` import is kept for future JSON-based webhook variants.
