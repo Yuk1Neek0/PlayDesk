@@ -27,6 +27,8 @@ This project uses **CCPM** (`.claude/skills/ccpm`). Work is planned as PRD → e
 docker compose up        # boots db + backend + frontend
 ```
 
+After `docker compose up`, you can switch between PlayDesk Flagship and PlayDesk North in the admin nav (v6 multi-location).
+
 ## Testing
 
 Always run tests before committing:
