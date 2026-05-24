@@ -70,11 +70,28 @@ TEMPLATES: dict[str, tuple[str, str]] = {
         "Thanks for visiting {store_name}, {customer_name}! Hope to see you again soon.",
         "感谢您光临 {store_name}，{customer_name}！期待再次见到您。",
     ),
+    # v7 customer-portal: SMS OTP for the /s/[slug]/account login flow.
+    "customer_otp": (
+        "Your PlayDesk verification code: {code}. Expires in 10 minutes.",
+        "您的 PlayDesk 验证码：{code}。10 分钟内有效。",
+    ),
+    # v7 customer-portal: confirmation SMS when a customer reschedules.
+    "booking_rescheduled": (
+        "Your PlayDesk booking on {date_old} has been moved to {date_new}. Thank you!",
+        "您在 PlayDesk 的预订已从 {date_old} 改至 {date_new}。感谢您的支持！",
+    ),
+    # v7 customer-portal: confirmation SMS when a customer cancels.
+    "booking_cancelled": (
+        "Your PlayDesk booking on {date} has been cancelled. We hope to see you again soon!",
+        "您在 PlayDesk 的预订（{date}）已取消。期待再次见到您！",
+    ),
 }
 
 
 # Templates whose `template_key` is allowed to bypass quiet hours.
-URGENT_TEMPLATE_KEYS: frozenset[str] = frozenset({"booking_confirmation"})
+# OTP must bypass quiet hours — a customer trying to log in at 11 pm
+# can't wait until morning for the code.
+URGENT_TEMPLATE_KEYS: frozenset[str] = frozenset({"booking_confirmation", "customer_otp"})
 
 
 def render_template(template_key: str, locale: str, context: Mapping[str, Any]) -> str:

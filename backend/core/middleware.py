@@ -24,7 +24,11 @@ so views can read it cheaply (single DB lookup per request — cached on
 
 from __future__ import annotations
 
+import json
+import time as _time
 from typing import TYPE_CHECKING
+
+from django.core import signing
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -34,6 +38,62 @@ COOKIE_NAME = "pd_store_slug"
 HEADER_NAME = "HTTP_X_PD_STORE_SLUG"
 # 1 year — admin sessions are durable and the cookie is just a preference.
 _COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+
+# ---------------------------------------------------------------------------
+# Customer-portal (v7) — signed session cookie
+# ---------------------------------------------------------------------------
+CUSTOMER_COOKIE_NAME = "pd_customer_session"
+# 30 days. The cookie payload also carries `exp` so a stolen, never-renewed
+# cookie can't outlive its TTL even if the rotation skew makes the cookie's
+# signed timestamp look fresh.
+CUSTOMER_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
+# Internal signing salt — separate from anywhere else we use TimestampSigner
+# so a value lifted from one context can't be replayed in another.
+_CUSTOMER_COOKIE_SALT = "pd.customer.session.v1"
+
+
+def sign_customer_session(customer_id: int, store_id: int) -> str:
+    """Sign `{customer_id, store_id, exp}` for the customer session cookie.
+
+    Returns a single signed string suitable for `Set-Cookie`. The cookie
+    is `HttpOnly`, `Secure`, `SameSite=Lax`, 30-day TTL; the binding to
+    `store_id` means a stolen cookie can't cross-leak between two stores
+    the same phone belongs to.
+    """
+    payload = {
+        "customer_id": int(customer_id),
+        "store_id": int(store_id),
+        "exp": int(_time.time()) + CUSTOMER_COOKIE_MAX_AGE,
+    }
+    signer = signing.TimestampSigner(salt=_CUSTOMER_COOKIE_SALT)
+    return signer.sign(json.dumps(payload, separators=(",", ":")))
+
+
+def unsign_customer_session(token: str) -> dict | None:
+    """Validate + return the cookie payload, or None on any failure.
+
+    Failures: bad signature, expired (cookie age > max-age via signer's
+    own check), missing/invalid JSON, exp in the past.
+    """
+    signer = signing.TimestampSigner(salt=_CUSTOMER_COOKIE_SALT)
+    try:
+        raw = signer.unsign(token, max_age=CUSTOMER_COOKIE_MAX_AGE)
+    except signing.BadSignature:
+        return None
+    try:
+        payload = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if not isinstance(payload.get("customer_id"), int):
+        return None
+    if not isinstance(payload.get("store_id"), int):
+        return None
+    exp = payload.get("exp")
+    if not isinstance(exp, int) or exp < int(_time.time()):
+        return None
+    return payload
 
 
 def _lookup_store_by_slug(slug: str | None):
@@ -137,4 +197,49 @@ class CurrentStoreMiddleware:
                 httponly=False,
                 path="/",
             )
+        return response
+
+
+class CustomerSessionMiddleware:
+    """Resolves `request.customer` from the signed `pd_customer_session` cookie.
+
+    Runs *after* ``CurrentStoreMiddleware`` so we can compare the cookie's
+    store binding against ``request.store``. A mismatched / expired /
+    tampered cookie sets ``request.customer = None`` and the response
+    deletes the cookie so the next request starts clean.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        raw = request.COOKIES.get(CUSTOMER_COOKIE_NAME)
+        request.customer = None
+        request._customer_cookie_should_clear = False  # type: ignore[attr-defined]
+
+        if raw:
+            payload = unsign_customer_session(raw)
+            if payload is None:
+                # Bad signature / expired — flag the cookie for deletion.
+                request._customer_cookie_should_clear = True  # type: ignore[attr-defined]
+            else:
+                # Store-binding check — cookie must match the currently
+                # resolved store (URL slug wins on /s/<slug>/... routes).
+                store = request.store
+                if store is None or store.id != payload["store_id"]:
+                    request._customer_cookie_should_clear = True  # type: ignore[attr-defined]
+                else:
+                    from .models import Customer
+
+                    customer = Customer.objects.filter(
+                        pk=payload["customer_id"], store_id=store.id
+                    ).first()
+                    if customer is None:
+                        request._customer_cookie_should_clear = True  # type: ignore[attr-defined]
+                    else:
+                        request.customer = customer
+
+        response = self.get_response(request)
+        if getattr(request, "_customer_cookie_should_clear", False):
+            response.delete_cookie(CUSTOMER_COOKIE_NAME, path="/")
         return response
