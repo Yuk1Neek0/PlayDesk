@@ -36,7 +36,7 @@ describe("fetchStoreBrand", () => {
     });
   });
 
-  it("hits the public/store-brand endpoint with default cache", async () => {
+  it("hits the public/store-brand endpoint with no-store cache", async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({ name: "X", logo_url: null, accent: null }),
     );
@@ -46,7 +46,9 @@ describe("fetchStoreBrand", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toContain("/api/public/store-brand/");
-    expect(init).toMatchObject({ cache: "default" });
+    // `no-store` (not `default`) so admin brand edits show on the next request;
+    // see store-brand.ts for the rationale.
+    expect(init).toMatchObject({ cache: "no-store" });
   });
 
   it("preserves explicit nulls in the payload", async () => {
