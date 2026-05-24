@@ -107,3 +107,76 @@ def test_response_carries_cache_header(client):
     Store.objects.create(name="Cacheable Store", timezone="UTC", business_hours={})
     resp = client.get(URL)
     assert resp["Cache-Control"] == "public, max-age=60"
+
+
+# ── ?store=<slug> query-param branch (task #162) ──────────────────────────
+
+
+@pytest.mark.django_db
+def test_store_query_param_picks_the_named_store(client):
+    Store.objects.create(
+        name="Alpha",
+        slug="alpha",
+        timezone="UTC",
+        business_hours={},
+        brand={"accent": "#aabbcc"},
+    )
+    Store.objects.create(
+        name="Beta",
+        slug="beta",
+        timezone="UTC",
+        business_hours={},
+        brand={"accent": "#112233"},
+    )
+    # No header / cookie → middleware fallback would pick Alpha (alphabetic
+    # first), but the query param wins.
+    resp = client.get(URL + "?store=beta")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["name"] == "Beta"
+    assert body["accent"] == "#112233"
+
+
+@pytest.mark.django_db
+def test_unknown_store_query_param_falls_through_to_middleware(client):
+    Store.objects.create(name="Alpha", slug="alpha", timezone="UTC", business_hours={})
+    resp = client.get(URL + "?store=does-not-exist")
+    assert resp.status_code == 200
+    # Fallback: the alphabetically-first store.
+    assert resp.json()["name"] == "Alpha"
+
+
+@pytest.mark.django_db
+def test_empty_store_query_param_falls_through(client):
+    Store.objects.create(name="Alpha", slug="alpha", timezone="UTC", business_hours={})
+    resp = client.get(URL + "?store=")
+    assert resp.json()["name"] == "Alpha"
+
+
+# ── /api/public/default-store/ (task #162) ────────────────────────────────
+
+
+DEFAULT_URL = "/api/public/default-store/"
+
+
+@pytest.mark.django_db
+def test_default_store_endpoint_returns_alphabetically_first_slug(client):
+    Store.objects.create(name="Zeta", slug="zeta", timezone="UTC", business_hours={})
+    Store.objects.create(name="Alpha", slug="alpha", timezone="UTC", business_hours={})
+    resp = client.get(DEFAULT_URL)
+    assert resp.status_code == 200
+    assert resp.json() == {"slug": "alpha"}
+
+
+@pytest.mark.django_db
+def test_default_store_endpoint_returns_null_when_no_stores(client):
+    resp = client.get(DEFAULT_URL)
+    assert resp.status_code == 200
+    assert resp.json() == {"slug": None}
+
+
+@pytest.mark.django_db
+def test_default_store_endpoint_is_cacheable(client):
+    Store.objects.create(name="One", slug="one", timezone="UTC", business_hours={})
+    resp = client.get(DEFAULT_URL)
+    assert resp["Cache-Control"] == "public, max-age=60"

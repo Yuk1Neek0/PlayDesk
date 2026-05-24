@@ -54,7 +54,7 @@ from .views_memberships import (
 )
 from .views_metrics import BusinessMetricsView
 from .views_outbound import OutboundMessageListView
-from .views_public import StoreBrandView
+from .views_public import DefaultStoreView, StoreBrandView
 from .webhooks_twilio import (
     twilio_sms_webhook,
     twilio_voice_status_callback,
@@ -208,6 +208,12 @@ urlpatterns = [
         "public/store-brand/",
         StoreBrandView.as_view(),
         name="public-store-brand",
+    ),
+    # Default-store slug — drives the `/` → `/s/<default>/book` redirect
+    path(
+        "public/default-store/",
+        DefaultStoreView.as_view(),
+        name="public-default-store",
     ),
     # Composite business-metrics endpoint backing the /admin dashboard strip
     path(
