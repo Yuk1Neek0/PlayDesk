@@ -12,7 +12,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import RangeOperators
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models.expressions import Func, Value
 from django.utils.text import slugify
@@ -85,6 +85,14 @@ class Store(models.Model):
     deposit_mode = models.CharField(max_length=16, choices=DEPOSIT_MODE_CHOICES, default="none")
     deposit_value = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     refund_matrix = models.JSONField(default=default_refund_matrix)
+
+    # ----- Rotating in-store check-in QR (v11a) -----
+    # How many minutes a single rotating door-QR key is valid before
+    # `rotate_checkin_keys` mints a fresh one. Enforced 1..60.
+    checkin_rotation_minutes = models.PositiveSmallIntegerField(
+        default=15,
+        validators=[MinValueValidator(1), MaxValueValidator(60)],
+    )
 
     class Meta:
         ordering = ["name"]
