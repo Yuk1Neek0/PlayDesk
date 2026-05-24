@@ -377,6 +377,59 @@ export function adminGetQRAnalytics(store: number, days = 7): Promise<QRAnalytic
   return request(`/api/admin/qr-analytics${queryString({ store, days })}`);
 }
 
+// ── Admin: business-metrics dashboard ─────────────────────────────────────
+
+export interface BookingsTodayMetric {
+  count: number;
+  trend_pct_vs_yesterday: number | null;
+}
+
+export interface BookingsWindowMetric {
+  count: number;
+  window_days: number;
+}
+
+export interface RevenueWindowMetric {
+  amount_cents: number;
+  currency: string;
+  window_days: number;
+}
+
+export interface NewCustomersWindowMetric {
+  count: number;
+  window_days: number;
+}
+
+export interface Outbound24hMetric {
+  sent: number;
+  failed: number;
+  queued: number;
+}
+
+export interface QRWindowMetric {
+  scans: number;
+  clicks: number;
+  engagement_pct: number;
+  window_days: number;
+}
+
+export interface BusinessMetricsPayload {
+  bookings_today: BookingsTodayMetric;
+  bookings_window: BookingsWindowMetric;
+  revenue_window: RevenueWindowMetric;
+  new_customers_window: NewCustomersWindowMetric;
+  outbound_24h: Outbound24hMetric;
+  qr_window: QRWindowMetric;
+}
+
+export function adminGetBusinessMetrics(
+  days?: number,
+  init?: RequestInit,
+): Promise<BusinessMetricsPayload> {
+  const qs = days === undefined ? "" : queryString({ days });
+  return request(`/api/admin/metrics/business${qs}`, init);
+}
+
 // ── Campaigns ─────────────────────────────────────────────────────────────
 
 export interface SegmentFilter {
