@@ -17,6 +17,7 @@ import {
   type CustomerDetail,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCurrentStore } from "@/lib/store-context";
 
 interface State {
   loading: boolean;
@@ -42,6 +43,11 @@ export default function CustomerDetailPage() {
     if (authReady && user?.role !== "staff") router.replace("/login");
   }, [authReady, user, router]);
 
+  // v6 multi-location: refetch on store switch so a customer that doesn't
+  // exist in the new store surfaces the standard error state.
+  const { current } = useCurrentStore();
+  const storeSlug = current?.slug ?? null;
+
   useEffect(() => {
     if (customerId === null || Number.isNaN(customerId)) return;
     let cancelled = false;
@@ -56,7 +62,7 @@ export default function CustomerDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [customerId]);
+  }, [customerId, storeSlug]);
 
   async function submitNote() {
     if (customerId === null || !noteBody.trim() || noteSaving) return;

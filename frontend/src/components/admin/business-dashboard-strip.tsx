@@ -13,6 +13,7 @@ import {
   adminGetBusinessMetrics,
   type BusinessMetricsPayload,
 } from "@/lib/api";
+import { useCurrentStore } from "@/lib/store-context";
 import { MetricCard } from "./metric-card";
 
 const POLL_MS = 60_000;
@@ -24,8 +25,18 @@ export function BusinessDashboardStrip() {
   // previous in-flight one.
   const abortRef = useRef<AbortController | null>(null);
 
+  // v6 multi-location: re-mount the poll on store switch so the metrics
+  // strip immediately reflects the new store. `current?.slug` flowing into
+  // the dep array also clears the previous store's stale data.
+  const { current } = useCurrentStore();
+  const storeSlug = current?.slug ?? null;
+
   useEffect(() => {
     let mounted = true;
+    // Reset to skeleton so a switch doesn't briefly show the old store's
+    // numbers under the new store's chip.
+    setData(null);
+    setErrored(false);
 
     const fetchOnce = () => {
       // Cancel any in-flight request from a prior tick.
@@ -58,7 +69,7 @@ export function BusinessDashboardStrip() {
     // `data` is intentionally excluded — re-creating the interval on every
     // payload change would defeat the polling cadence.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [storeSlug]);
 
   if (data === null) {
     return (
