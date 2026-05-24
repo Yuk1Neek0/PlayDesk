@@ -7,6 +7,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/pd-ui";
+import { useCurrentStore } from "@/lib/store-context";
+
+// Default brand sub-label for customer pages (no StoreProvider mounted).
+// On /admin/*, the admin layout wraps children in <StoreProvider>, so this
+// hook returns the actual current store and we render its name instead.
+const DEFAULT_BRAND_LOC = "Downtown · Toronto";
 
 // Customer-facing navigation. /admin is intentionally absent — the staff
 // dashboard is reached via Sign in and gated by the staff role.
@@ -17,6 +23,7 @@ const LINKS: { href: string; label: string }[] = [
 
 export default function Nav() {
   const pathname = usePathname();
+  const { current } = useCurrentStore();
 
   // Customer-facing QR landing pages are scanned from the front desk —
   // they intentionally render without any app chrome.
@@ -29,7 +36,7 @@ export default function Nav() {
           <Icon.logo size={20} />
         </span>
         <span className="pd-brand-name">PlayDesk</span>
-        <span className="pd-brand-loc">Downtown · Toronto</span>
+        <span className="pd-brand-loc">{current?.name ?? DEFAULT_BRAND_LOC}</span>
       </Link>
       <div className="pd-nav-links">
         {LINKS.map(({ href, label }) => {
