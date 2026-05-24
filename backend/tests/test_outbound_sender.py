@@ -67,7 +67,17 @@ def _restore_sms_registry():
 
 @pytest.fixture()
 def store(db):
-    return Store.objects.create(name="Sender Store", timezone="UTC", business_hours={})
+    # Set quiet_hours_start == quiet_hours_end so quiet_hours.next_send_time
+    # always treats this store as "never quiet". Without this, sender tests
+    # run during 22:00-08:00 UTC (the model default window) get rescheduled
+    # instead of sent — a real time-of-day flake.
+    return Store.objects.create(
+        name="Sender Store",
+        timezone="UTC",
+        business_hours={},
+        quiet_hours_start=time(0, 0),
+        quiet_hours_end=time(0, 0),
+    )
 
 
 @pytest.fixture()
