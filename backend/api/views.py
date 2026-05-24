@@ -330,8 +330,17 @@ class BookingListCreateView(ListCreateAPIView):
                 },
                 status=status.HTTP_409_CONFLICT,
             )
+
+        # v9 billing-payments: wire optional PaymentIntent if the store
+        # demands a deposit. Computed AFTER the booking row exists — this
+        # is the deliberate ordering for the merge with v8 pricing-rules
+        # (which will compute `total_amount` BEFORE the booking is saved).
+        payment_payload = _maybe_open_deposit(booking)
         out = BookingSerializer(booking)
-        return Response(out.data, status=status.HTTP_201_CREATED)
+        body = dict(out.data)
+        if payment_payload:
+            body.update(payment_payload)
+        return Response(body, status=status.HTTP_201_CREATED)
 
 
 class BookingDetailView(APIView):
@@ -854,6 +863,111 @@ class QRPublicView(APIView):
                 "actions": QRActionSerializer(actions, many=True).data,
             }
         )
+
+
+# ---------------------------------------------------------------------------
+# v9 billing-payments — deposit PaymentIntent on booking-create
+# ---------------------------------------------------------------------------
+
+
+def _maybe_open_deposit(booking):
+    """If the store demands a deposit, create a Stripe PaymentIntent.
+
+    Returns a dict to merge into the booking-create response when a
+    deposit is required (`{requires_payment, client_secret, deposit_amount}`);
+    returns None when `deposit_mode='none'` so the response stays
+    backwards-compatible.
+    """
+    import logging
+    from decimal import Decimal
+
+    from billing import stripe_client
+    from billing.helpers import calc_deposit
+    from billing.models import Payment, PaymentKind, PaymentRowStatus
+    from core.models import BookingStatus, PaymentStatus
+
+    log = logging.getLogger(__name__)
+
+    resource = booking.resource
+    store = resource.store
+    # Pricing source: v8 `total_amount` if landed, else hourly * hours.
+    total = getattr(booking, "total_amount", None)
+    if total is None:
+        hours = Decimal((booking.end_time - booking.start_time).total_seconds() / 3600).quantize(
+            Decimal("0.01")
+        )
+        total = resource.price_per_hour * hours
+
+    deposit = calc_deposit(store, resource, total)
+    if deposit <= 0:
+        # Either deposit_mode=none or computed to zero. Treat as the
+        # legacy "no deposit" path — leave the booking confirmed.
+        return None
+
+    booking.payment_status = PaymentStatus.PENDING_PAYMENT
+    booking.status = BookingStatus.PENDING
+    booking.deposit_amount = deposit
+    booking.save(update_fields=["payment_status", "status", "deposit_amount"])
+
+    if not stripe_client.is_configured():
+        # Test/dev mode without a real key — create a stub Payment row
+        # so the ledger + admin UI render, but skip the Stripe call.
+        Payment.objects.create(
+            store=store,
+            booking=booking,
+            kind=PaymentKind.DEPOSIT,
+            amount=deposit,
+            currency=store.currency,
+            status=PaymentRowStatus.PENDING,
+            metadata={"test_mode_stub": True},
+        )
+        return {
+            "requires_payment": True,
+            "deposit_amount": str(deposit),
+            "client_secret": None,
+            "configured": False,
+        }
+
+    stripe = stripe_client.get_stripe()
+    try:
+        intent_kwargs = {
+            "amount": int(deposit * 100),
+            "currency": store.currency.lower(),
+            "metadata": {
+                "booking_id": str(booking.id),
+                "kind": "deposit",
+            },
+        }
+        if store.stripe_account_id and store.stripe_charges_enabled:
+            intent_kwargs["transfer_data"] = {"destination": store.stripe_account_id}
+        intent = stripe.PaymentIntent.create(**intent_kwargs)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("PaymentIntent.create failed: %s", exc)
+        return {
+            "requires_payment": True,
+            "deposit_amount": str(deposit),
+            "client_secret": None,
+            "error": "stripe_unavailable",
+        }
+
+    booking.payment_intent_id = intent.id
+    booking.save(update_fields=["payment_intent_id"])
+
+    Payment.objects.create(
+        store=store,
+        booking=booking,
+        kind=PaymentKind.DEPOSIT,
+        amount=deposit,
+        currency=store.currency,
+        status=PaymentRowStatus.PENDING,
+        stripe_payment_intent_id=intent.id,
+    )
+
+    return {
+        "requires_payment": True,
+        "deposit_amount": str(deposit),
+        "client_secret": getattr(intent, "client_secret", None),
+    }
 
 
 # ---------------------------------------------------------------------------

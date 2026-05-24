@@ -73,6 +73,10 @@ class BookingSerializer(serializers.ModelSerializer):
     conversation_id = serializers.IntegerField(
         source="conversation.id", read_only=True, allow_null=True
     )
+    # v9 billing-payments — read-only payment fields surfaced for the
+    # admin booking detail + customer post-payment poll.
+    payment_status = serializers.CharField(read_only=True)
+    deposit_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
         model = Booking
@@ -90,6 +94,8 @@ class BookingSerializer(serializers.ModelSerializer):
             "rule_snapshot",
             "refund_amount",
             "created_at",
+            "payment_status",
+            "deposit_amount",
         ]
         read_only_fields = [
             "id",
@@ -97,6 +103,8 @@ class BookingSerializer(serializers.ModelSerializer):
             "total_amount",
             "rule_snapshot",
             "refund_amount",
+            "payment_status",
+            "deposit_amount",
         ]
 
 

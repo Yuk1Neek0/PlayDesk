@@ -29,6 +29,24 @@ class TsTzRange(Func):
     output_field = models.Field()
 
 
+# Default refund matrix — top-down, first row whose `min_hours` lead time
+# is met wins. Module-level so Django migrations can import the callable
+# (default=lambda would serialise as a non-deserialisable lambda).
+def default_refund_matrix() -> list[dict]:
+    return [
+        {"min_hours": 48, "refund_pct": 100},
+        {"min_hours": 24, "refund_pct": 50},
+        {"min_hours": 0, "refund_pct": 0},
+    ]
+
+
+DEPOSIT_MODE_CHOICES = [
+    ("none", "None"),
+    ("percentage", "Percentage"),
+    ("fixed", "Fixed"),
+]
+
+
 # ---------------------------------------------------------------------------
 # Store
 # ---------------------------------------------------------------------------
@@ -51,6 +69,22 @@ class Store(models.Model):
     # still self-serve cancel a booking. Inside this window the portal
     # returns 409 and tells the customer to contact staff.
     cancellation_lead_hours = models.PositiveIntegerField(default=24)
+
+    # ----- Stripe Connect (v9 billing-payments, task #179) -----
+    # Connect Standard account id (acct_…). Null until the chain owner
+    # completes the onboarding flow at /admin/settings/payments/.
+    stripe_account_id = models.CharField(max_length=64, null=True, blank=True)
+    # Mirror of Stripe's `account.charges_enabled` — updated by the
+    # `account.updated` webhook + the onboarding return URL.
+    stripe_charges_enabled = models.BooleanField(default=False)
+    # ISO 4217 currency code. Single-currency per store (multi-currency
+    # is explicitly out of scope for v9).
+    currency = models.CharField(max_length=3, default="USD")
+
+    # ----- Deposit policy (v9 billing-payments, task #180) -----
+    deposit_mode = models.CharField(max_length=16, choices=DEPOSIT_MODE_CHOICES, default="none")
+    deposit_value = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    refund_matrix = models.JSONField(default=default_refund_matrix)
 
     class Meta:
         ordering = ["name"]
@@ -93,6 +127,20 @@ class Resource(models.Model):
     capacity = models.PositiveIntegerField(default=1)
     price_per_hour = models.DecimalField(max_digits=8, decimal_places=2)
     metadata = models.JSONField(default=dict, blank=True)
+
+    # ----- Per-resource deposit override (v9 task #180) -----
+    # When `deposit_override_mode` is non-null, it wins over the store
+    # default. A "premium" PS5 Pro Suite can demand 100% prepay even
+    # when the store as a whole is 30% deposit.
+    deposit_override_mode = models.CharField(
+        max_length=16,
+        choices=DEPOSIT_MODE_CHOICES,
+        null=True,
+        blank=True,
+    )
+    deposit_override_value = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
 
     class Meta:
         ordering = ["store", "type", "name"]
@@ -347,6 +395,15 @@ class BookingSource(models.TextChoices):
     AGENT = "agent", "Agent"
 
 
+class PaymentStatus(models.TextChoices):
+    NOT_REQUIRED = "not_required", "Not required"
+    PENDING_PAYMENT = "pending_payment", "Pending payment"
+    DEPOSIT_PAID = "deposit_paid", "Deposit paid"
+    PAID_IN_FULL = "paid_in_full", "Paid in full"
+    REFUNDED = "refunded", "Refunded"
+    PARTIALLY_REFUNDED = "partially_refunded", "Partially refunded"
+
+
 class Booking(models.Model):
     resource = models.ForeignKey(Resource, on_delete=models.PROTECT, related_name="bookings")
     conversation = models.ForeignKey(
@@ -392,6 +449,31 @@ class Booking(models.Model):
     # a zero-default placeholder so the field is available at merge time.
     refund_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # ----- Payment status (v9 billing-payments, task #181) -----
+    payment_status = models.CharField(
+        max_length=24,
+        choices=PaymentStatus.choices,
+        default=PaymentStatus.NOT_REQUIRED,
+    )
+    deposit_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    payment_intent_id = models.CharField(max_length=128, null=True, blank=True)
+
+    @property
+    def balance_amount(self) -> Decimal:
+        """Outstanding amount due after the deposit is captured.
+
+        Uses v8's `total_amount` field when present; falls back to
+        `price_per_hour * duration_hours` otherwise. Quantized to 2dp so
+        Stripe's integer-cent conversion stays exact.
+        """
+        total = getattr(self, "total_amount", None)
+        if total is None:
+            hours = Decimal((self.end_time - self.start_time).total_seconds() / 3600).quantize(
+                Decimal("0.01")
+            )
+            total = self.resource.price_per_hour * hours
+        return (Decimal(total) - self.deposit_amount).quantize(Decimal("0.01"))
 
     class Meta:
         ordering = ["-created_at"]

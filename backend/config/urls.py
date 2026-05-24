@@ -11,4 +11,6 @@ urlpatterns = [
     path("api/", include("agent.urls")),
     # Pricing — public POST /api/quote/ + admin /api/admin/pricing-rules/
     path("api/", include("pricing.urls")),
+    # Billing — Stripe Connect, webhook, charge-balance, refund (v9 epic)
+    path("api/", include("billing.urls")),
 ]

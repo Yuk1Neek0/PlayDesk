@@ -85,13 +85,39 @@ TEMPLATES: dict[str, tuple[str, str]] = {
         "Your PlayDesk booking on {date} has been cancelled. We hope to see you again soon!",
         "您在 PlayDesk 的预订（{date}）已取消。期待再次见到您！",
     ),
+    # v9 billing-payments — receipts + refund + balance-charge link.
+    "payment_receipt": (
+        "PlayDesk: ${amount} received for your booking on {date}. Thank you!",
+        "PlayDesk：已收到您的预订付款 ${amount}（{date}）。感谢您！",
+    ),
+    "refund_receipt": (
+        "PlayDesk: ${amount} refunded to your card. Funds typically arrive in 5-10 business days.",
+        "PlayDesk：${amount} 已退回您的银行卡，5-10 个工作日内到账。",
+    ),
+    "booking_refunded": (
+        "PlayDesk: ${amount} refunded to your card for your cancelled booking.",
+        "PlayDesk：您取消的预订款项 ${amount} 已退回您的银行卡。",
+    ),
+    "balance_charge_link": (
+        "PlayDesk: complete your booking payment (${balance}): {checkout_url}",
+        "PlayDesk：请完成预订余款支付（${balance}）：{checkout_url}",
+    ),
 }
 
 
 # Templates whose `template_key` is allowed to bypass quiet hours.
-# OTP must bypass quiet hours — a customer trying to log in at 11 pm
-# can't wait until morning for the code.
-URGENT_TEMPLATE_KEYS: frozenset[str] = frozenset({"booking_confirmation", "customer_otp"})
+# OTP must bypass — a customer trying to log in at 11pm can't wait until
+# morning for the code. Payment receipts/refunds bypass too — financial
+# events deserve immediate confirmation regardless of hour.
+URGENT_TEMPLATE_KEYS: frozenset[str] = frozenset(
+    {
+        "booking_confirmation",
+        "customer_otp",
+        "payment_receipt",
+        "refund_receipt",
+        "booking_refunded",
+    }
+)
 
 
 def render_template(template_key: str, locale: str, context: Mapping[str, Any]) -> str:

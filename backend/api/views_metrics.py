@@ -66,6 +66,57 @@ def _trend_pct(today_count: int, yesterday_count: int) -> float | None:
     return round((today_count - yesterday_count) / yesterday_count * 100.0, 1)
 
 
+def _revenue_and_refunds_mtd(store, local_today) -> tuple[str, str]:
+    """Decimal-precise revenue + refunds for the current month, store-scoped.
+
+    Returns string-encoded amounts so the JSON payload is exact (no
+    float-to-JSON loss). MTD = first of the local-today month.
+    """
+    from datetime import time as _dtime
+    from decimal import Decimal
+
+    from billing.models import Payment, PaymentKind, PaymentRowStatus
+
+    try:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        tz_name = getattr(store, "timezone", "") or "UTC"
+        try:
+            tz = ZoneInfo(tz_name)
+        except (ZoneInfoNotFoundError, ValueError):
+            tz = ZoneInfo("UTC")
+    except ImportError:  # pragma: no cover
+        tz = None
+
+    month_start_local = local_today.replace(day=1)
+    month_start = datetime.combine(month_start_local, _dtime.min, tzinfo=tz)
+
+    revenue = (
+        Payment.objects.filter(
+            store=store,
+            status=PaymentRowStatus.SUCCEEDED,
+            kind__in=[PaymentKind.DEPOSIT, PaymentKind.BALANCE],
+            created_at__gte=month_start,
+        )
+        .aggregate(total=Sum("amount"))
+        .get("total")
+    )
+    refunds = (
+        Payment.objects.filter(
+            store=store,
+            status=PaymentRowStatus.SUCCEEDED,
+            kind=PaymentKind.REFUND,
+            created_at__gte=month_start,
+        )
+        .aggregate(total=Sum("amount"))
+        .get("total")
+    )
+    return (
+        str(Decimal(revenue or 0).quantize(Decimal("0.01"))),
+        str(abs(Decimal(refunds or 0)).quantize(Decimal("0.01"))),
+    )
+
+
 def _revenue_cents(store, since) -> int:
     """Sum of completed-booking deposit amounts in the window, in cents.
 
@@ -142,6 +193,12 @@ class BusinessMetricsView(APIView):
         clicks = int(qr_buckets.get("click", 0))
         engagement_pct = round((clicks / scans * 100.0), 1) if scans else 0.0
 
+        # v9 billing-payments tiles — store-scoped MTD aggregates.
+        try:
+            revenue_mtd, refunds_mtd = _revenue_and_refunds_mtd(store, local_today)
+        except Exception:  # noqa: BLE001
+            revenue_mtd, refunds_mtd = "0.00", "0.00"
+
         payload = {
             "bookings_today": {
                 "count": today_count,
@@ -171,6 +228,14 @@ class BusinessMetricsView(APIView):
                 "engagement_pct": engagement_pct,
                 "window_days": _QR_WINDOW_DAYS,
             },
+            "revenue_mtd": {
+                "amount": revenue_mtd,
+                "currency": store.currency,
+            },
+            "refunds_mtd": {
+                "amount": refunds_mtd,
+                "currency": store.currency,
+            },
         }
         return _with_cache(Response(payload))
 
@@ -188,6 +253,8 @@ def _empty_payload(days: int) -> dict:
             "engagement_pct": 0.0,
             "window_days": _QR_WINDOW_DAYS,
         },
+        "revenue_mtd": {"amount": "0.00", "currency": "USD"},
+        "refunds_mtd": {"amount": "0.00", "currency": "USD"},
     }
 
 
