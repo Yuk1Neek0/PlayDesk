@@ -5,15 +5,20 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('core', '0018_backfill_check_in_token'),
+        ("core", "0018_backfill_check_in_token"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='store',
-            name='checkin_rotation_minutes',
-            field=models.PositiveSmallIntegerField(default=15, validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(60)]),
+            model_name="store",
+            name="checkin_rotation_minutes",
+            field=models.PositiveSmallIntegerField(
+                default=15,
+                validators=[
+                    django.core.validators.MinValueValidator(1),
+                    django.core.validators.MaxValueValidator(60),
+                ],
+            ),
         ),
     ]
