@@ -34,6 +34,17 @@ from core.memberships import (
 )
 from core.models import Customer, PointTransaction, Reward, RewardTier
 
+
+# Helper: every membership view scopes the customer lookup to ``request.store``
+# so a customer pk that belongs to another location returns 404 rather than
+# leaking the row across stores.
+def _customer_for_request(request, pk):
+    qs = Customer.objects.all()
+    if request.store is not None:
+        qs = qs.filter(store=request.store)
+    return get_object_or_404(qs, pk=pk)
+
+
 # ---------------------------------------------------------------------------
 # Serializers
 # ---------------------------------------------------------------------------
@@ -101,7 +112,7 @@ class MembershipView(APIView):
     permission_classes: list = []
 
     def get(self, request, pk: int):
-        customer = get_object_or_404(Customer, pk=pk)
+        customer = _customer_for_request(request, pk)
         balance = current_balance(customer)
         lifetime = lifetime_points_earned(customer)
         tier = tier_for(customer)
@@ -157,7 +168,7 @@ class AdjustPointsView(APIView):
     permission_classes: list = []
 
     def post(self, request, pk: int):
-        customer = get_object_or_404(Customer, pk=pk)
+        customer = _customer_for_request(request, pk)
         ser = AdjustPointsSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         author = request.user if request.user.is_authenticated else None
@@ -190,7 +201,7 @@ class RedeemView(APIView):
     permission_classes: list = []
 
     def post(self, request, pk: int):
-        customer = get_object_or_404(Customer, pk=pk)
+        customer = _customer_for_request(request, pk)
         ser = RedeemSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         try:
@@ -252,6 +263,8 @@ class RewardViewSet(viewsets.ModelViewSet):
         store_id = self.request.query_params.get("store")
         if store_id:
             qs = qs.filter(store_id=store_id)
+        elif self.request.store is not None:
+            qs = qs.filter(store=self.request.store)
         return qs
 
 
@@ -264,6 +277,8 @@ class RewardTierViewSet(viewsets.ModelViewSet):
         store_id = self.request.query_params.get("store")
         if store_id:
             qs = qs.filter(store_id=store_id)
+        elif self.request.store is not None:
+            qs = qs.filter(store=self.request.store)
         return qs
 
 
