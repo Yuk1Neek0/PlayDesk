@@ -15,7 +15,8 @@ from django.utils import timezone
 
 from core.models import Customer
 
-from .models import OutboundChannel, OutboundMessage, OutboundStatus
+from .channel_pref import pick_channel_for
+from .models import OutboundMessage, OutboundStatus
 from .templates import TEMPLATES, render_template
 
 
@@ -24,7 +25,7 @@ def enqueue_message(
     template_key: str,
     context: Mapping[str, Any] | None = None,
     scheduled_for: datetime | None = None,
-    channel: str = OutboundChannel.SMS,
+    channel: str | None = None,
     reference: str = "",
     body: str | None = None,
 ) -> OutboundMessage:
@@ -36,6 +37,10 @@ def enqueue_message(
       with `template_key="campaign"` to ship raw bodies that were
       pre-rendered upstream).
     - Defaults `scheduled_for` to "send immediately" (now).
+    - Resolves `channel` via `pick_channel_for(customer)` when the
+      caller leaves it at the default (None) — the customer's most
+      recent inbound conversation channel wins. Explicit `channel=`
+      kwarg still overrides (campaigns passes `channel="sms"`).
     - Idempotent on `(reference, template_key)` when `reference` is
       non-empty: if a row with the same key already exists in `queued`
       or `sent` status, returns the existing row without inserting.
@@ -45,6 +50,11 @@ def enqueue_message(
         scheduled_for = timezone.now()
     if context is None:
         context = {}
+    # Implicit channel preference — but only when the caller didn't
+    # already pick one. Keeps the campaigns path (which always passes
+    # `channel="sms"`) deterministic.
+    if channel is None:
+        channel = pick_channel_for(customer)
 
     # Idempotence guard — the cheap query first.
     if reference:

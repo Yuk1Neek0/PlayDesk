@@ -29,10 +29,13 @@ export async function fetchStoreBrand(): Promise<StoreBrand> {
   const origin = backendOrigin();
   try {
     const resp = await fetch(`${origin}/api/public/store-brand/`, {
-      // The endpoint serves `Cache-Control: public, max-age=60`; mirroring
-      // that here maximises Next.js's fetch-dedup so concurrent SSR renders
-      // share one response.
-      cache: "default",
+      // `cache: "no-store"` so an admin updating Store.brand sees the change
+      // on the very next request. Next.js's Data Cache would otherwise hold
+      // the response for the duration of the dev session, which broke the
+      // branded-booking.e2e.ts test (it mutates brand and expects the next
+      // navigation to reflect it). The endpoint itself is one indexed read
+      // (~5ms) so dropping the data-cache layer is essentially free.
+      cache: "no-store",
     });
     if (!resp.ok) return DEFAULT_BRAND;
     const body = (await resp.json()) as Partial<StoreBrand>;

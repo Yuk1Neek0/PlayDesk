@@ -149,12 +149,22 @@ const CONVERSATION_DETAIL = {
   ],
 };
 
+const BUSINESS_METRICS = {
+  bookings_today: { count: 0, trend_pct_vs_yesterday: null },
+  bookings_window: { count: 0, window_days: 30 },
+  revenue_window: { amount_cents: 0, currency: "CAD", window_days: 30 },
+  new_customers_window: { count: 0, window_days: 30 },
+  outbound_24h: { sent: 0, failed: 0, queued: 0 },
+  qr_window: { scans: 0, clicks: 0, engagement_pct: 0.0, window_days: 7 },
+};
+
 describe("AdminPage", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.includes("/api/admin/metrics/business")) return json(BUSINESS_METRICS);
         if (url.includes("/api/admin/bookings")) return json(BOOKINGS);
         if (url.includes("/api/admin/conversations")) return json(CONVERSATIONS);
         if (url.includes("/api/resources")) return json(RESOURCES);
