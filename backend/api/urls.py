@@ -44,6 +44,7 @@ from .views_campaigns import (
     SegmentListCreateView,
     SegmentPreviewView,
 )
+from .views_customer_auth import LogoutView, RequestCodeView, VerifyCodeView
 from .views_memberships import (
     AdjustPointsView,
     MembershipView,
@@ -220,6 +221,22 @@ urlpatterns = [
         "admin/metrics/business/",
         BusinessMetricsView.as_view(),
         name="admin-business-metrics",
+    ),
+    # Customer-portal auth (v7) — phone+OTP gate for /s/[slug]/account
+    path(
+        "customer-auth/request-code/",
+        RequestCodeView.as_view(),
+        name="customer-auth-request-code",
+    ),
+    path(
+        "customer-auth/verify-code/",
+        VerifyCodeView.as_view(),
+        name="customer-auth-verify-code",
+    ),
+    path(
+        "customer-auth/logout/",
+        LogoutView.as_view(),
+        name="customer-auth-logout",
     ),
     # Stripe webhook — confirms a booking when its deposit is paid
     path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"),

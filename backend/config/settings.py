@@ -66,6 +66,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "core.middleware.CurrentStoreMiddleware",
+    "core.middleware.CustomerSessionMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -154,6 +155,17 @@ STRIPE_SUCCESS_URL = env("STRIPE_SUCCESS_URL", default="http://localhost:3000/?p
 STRIPE_CANCEL_URL = env("STRIPE_CANCEL_URL", default="http://localhost:3000/?payment=cancelled")
 # How long an unpaid pending_payment hold survives before expire_holds reaps it.
 STRIPE_HOLD_MINUTES = env.int("STRIPE_HOLD_MINUTES", default=10)
+
+# ---------------------------------------------------------------------------
+# Caches — Django LocMem cache backs the customer-portal OTP rate-limiter.
+# Production should swap this for Redis once the workload justifies it.
+# ---------------------------------------------------------------------------
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "playdesk-default",
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Twilio — SMS channel (multi-channel epic)
