@@ -17,20 +17,39 @@ from django.db import migrations
 
 
 def _seed_backfill(apps, schema_editor) -> None:
-    # Use live models so `award_points` operates on real Customer instances.
+    # Schema-sensitive: when running as a migration (`apps` provided),
+    # use the historical Store/Customer state to avoid SELECT'ing
+    # columns added by later migrations (e.g. v9 billing fields).
+    # When called directly from a test (`apps is None`), fall back to
+    # live models — that path always runs against a fully-migrated DB.
     from core.memberships import award_points
-    from core.models import Customer, PointTransaction, Store
+    from core.models import Customer as LiveCustomer
+    from core.models import PointTransaction as LivePT
+    from core.models import Store as LiveStore
 
-    points_by_store: dict[int, int] = {s.id: int(s.points_per_booking) for s in Store.objects.all()}
+    if apps is not None:
+        StoreModel = apps.get_model("core", "Store")
+        CustomerModel = apps.get_model("core", "Customer")
+        PTModel = apps.get_model("core", "PointTransaction")
+    else:
+        StoreModel = LiveStore
+        CustomerModel = LiveCustomer
+        PTModel = LivePT
 
-    for customer in Customer.objects.all().only("id", "store_id", "total_visits"):
-        if PointTransaction.objects.filter(customer_id=customer.id).exists():
+    points_by_store: dict[int, int] = {
+        s["id"]: int(s["points_per_booking"])
+        for s in StoreModel.objects.all().values("id", "points_per_booking")
+    }
+
+    for hist_customer in CustomerModel.objects.all().only("id", "store_id", "total_visits"):
+        if PTModel.objects.filter(customer_id=hist_customer.id).exists():
             continue
-        per_visit = points_by_store.get(customer.store_id, 10)
-        delta = int(customer.total_visits) * per_visit
+        per_visit = points_by_store.get(hist_customer.store_id, 10)
+        delta = int(hist_customer.total_visits) * per_visit
         if delta <= 0:
             continue
-        award_points(customer, delta, "backfill", "backfill-v4")
+        live_customer = LiveCustomer.objects.get(pk=hist_customer.pk)
+        award_points(live_customer, delta, "backfill", "backfill-v4")
 
 
 def _reverse_backfill(apps, schema_editor) -> None:
