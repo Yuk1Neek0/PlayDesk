@@ -4,8 +4,15 @@
 // docs/contracts/openapi.yaml (`npm run gen:api`). No hand-written wire types.
 // The streaming `POST /api/conversations/{id}/messages` endpoint is handled
 // separately in `sse.ts`.
+//
+// Multi-location note (epic #157, task #161): the internal `request()` helper
+// delegates to `adminFetch` in `admin-fetch.ts`, which auto-injects the
+// `X-PD-Store-Slug` header from the active `<StoreProvider>`. Single-store
+// callers (no provider) get the existing behaviour — the backend's
+// `CurrentStoreMiddleware` falls back to the alphabetically-first store.
 
 import type { components } from "@/types/api";
+import { adminFetch } from "./admin-fetch";
 
 // Empty by default: requests are same-origin and `/api/*` is proxied to the
 // backend by the Next.js rewrite in `next.config.mjs` (the backend ships no
@@ -69,29 +76,16 @@ export function withTrailingSlash(path: string): string {
   return query ? `${normalised}?${query}` : normalised;
 }
 
+// Re-export so tests / callers can `import { adminFetch } from "@/lib/api"`
+// if they prefer the single-entry-point shape. The canonical location is
+// `@/lib/admin-fetch`.
+export { adminFetch };
+
+// `request()` stays the typed-client primitive. It delegates to `adminFetch`
+// so every admin call (adminListBookings, adminGetMembership, …) inherits
+// the `X-PD-Store-Slug` header injection without per-callsite changes.
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${withTrailingSlash(path)}`, {
-    ...init,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    let body: unknown = null;
-    try {
-      body = await response.json();
-    } catch {
-      // Non-JSON or empty error body — leave as null.
-    }
-    throw new ApiError(response.status, body);
-  }
-
-  // 204 No Content (e.g. deleteBooking) has no body to parse.
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+  return adminFetch<T>(`${API_BASE_URL}${withTrailingSlash(path)}`, init);
 }
 
 // ── Resources ──────────────────────────────────────────────────────────────
