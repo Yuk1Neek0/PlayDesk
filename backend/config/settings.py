@@ -185,6 +185,16 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
 LOGIN_URL = "/staff/login/"
 
+# CSRF — the admin SPA lives at <frontend-origin>, talks to the API via the
+# Next.js rewrite at /api/*, so Django sees `Origin: <frontend-origin>` on
+# unsafe methods. CsrfViewMiddleware blocks those unless the origin is
+# listed here. Defaults cover dev (next at :3000 → backend at :8000); prod
+# overrides via CSRF_TRUSTED_ORIGINS env var (comma-separated).
+CSRF_TRUSTED_ORIGINS = env.list(
+    "CSRF_TRUSTED_ORIGINS",
+    default=["http://localhost:3000", "http://127.0.0.1:3000"],
+)
+
 # ---------------------------------------------------------------------------
 # Caches — Django LocMem cache backs the customer-portal OTP rate-limiter.
 # Production should swap this for Redis once the workload justifies it.

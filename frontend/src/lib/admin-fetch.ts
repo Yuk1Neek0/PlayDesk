@@ -59,6 +59,20 @@ export function setAdminFetchOn401(handler: On401Handler | null): void {
  * - Sends cookies (`credentials: "include"`) like the rest of the app.
  * - Throws `ApiError` on non-2xx, returning JSON on success.
  */
+// Read a cookie value by name from `document.cookie`. Returns null when
+// not in a browser (SSR) or when the cookie isn't set.
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const target = `${name}=`;
+  for (const part of document.cookie.split(";")) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(target)) return decodeURIComponent(trimmed.slice(target.length));
+  }
+  return null;
+}
+
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 export async function adminFetch<T = unknown>(
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -72,6 +86,15 @@ export async function adminFetch<T = unknown>(
   }
   if (slug && !headers.has("X-PD-Store-Slug")) {
     headers.set("X-PD-Store-Slug", slug);
+  }
+  // Django's CsrfViewMiddleware enforces a token on unsafe methods when the
+  // request is session-authenticated (admin APIs). The staff login response
+  // sets a non-HttpOnly `csrftoken` cookie; mirror it into `X-CSRFToken` so
+  // admin POST/PATCH/DELETE calls aren't rejected with "CSRF Failed".
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (UNSAFE_METHODS.has(method) && !headers.has("X-CSRFToken")) {
+    const csrf = readCookie("csrftoken");
+    if (csrf) headers.set("X-CSRFToken", csrf);
   }
 
   const response = await fetch(input, {
