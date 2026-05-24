@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fmtDate, relTime } from "@/components/pd-ui";
 import { adminListCustomers, type CustomerSummary } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useStaffSession } from "@/lib/staff-session";
 import { useCurrentStore } from "@/lib/store-context";
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -30,10 +30,10 @@ export default function AdminCustomersPage() {
   const [page, setPage] = useState(1);
   const [state, setState] = useState<PageState>(EMPTY);
 
-  const { user, ready: authReady } = useAuth();
+  const { user, ready: authReady } = useStaffSession();
   const router = useRouter();
   useEffect(() => {
-    if (authReady && user?.role !== "staff") router.replace("/login");
+    if (authReady && !user?.is_staff) router.replace("/staff/login");
   }, [authReady, user, router]);
 
   // v6 multi-location: refetch the customer list when the admin switches
@@ -75,7 +75,7 @@ export default function AdminCustomersPage() {
   const totalPages = useMemo(() => Math.max(1, Math.ceil(state.count / 20)), [state.count]);
 
   if (!authReady) return <div className="pd-admin" />;
-  if (user?.role !== "staff") return null;
+  if (!user?.is_staff) return null;
 
   return (
     <div className="pd-admin">

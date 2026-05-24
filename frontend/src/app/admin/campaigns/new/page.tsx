@@ -26,16 +26,16 @@ import {
   type Segment,
   type SegmentPreview,
 } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useStaffSession } from "@/lib/staff-session";
 import { useCurrentStore } from "@/lib/store-context";
 
 type ScheduleMode = "now" | "later";
 
 export default function NewCampaignPage() {
   const router = useRouter();
-  const { user, ready: authReady } = useAuth();
+  const { user, ready: authReady } = useStaffSession();
   useEffect(() => {
-    if (authReady && user?.role !== "staff") router.replace("/login");
+    if (authReady && !user?.is_staff) router.replace("/staff/login");
   }, [authReady, user, router]);
 
   const [storeId, setStoreId] = useState<number | null>(null);
@@ -187,7 +187,7 @@ export default function NewCampaignPage() {
   }
 
   if (!authReady) return <div className="pd-admin" />;
-  if (user?.role !== "staff") return null;
+  if (!user?.is_staff) return null;
 
   return (
     <div className="pd-admin">

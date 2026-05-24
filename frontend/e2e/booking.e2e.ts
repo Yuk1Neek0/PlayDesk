@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { signInAsStaff } from "./helpers";
+
 // J1 — a customer completes a manual booking through the UI.
 // J2 — the time picked on `/` is the time shown on `/admin` (the timezone
 //      regression: a 10:00 pick must not surface as 22:00).
@@ -48,9 +50,7 @@ test("manual booking: pick a slot, confirm, and verify the time in admin", async
   await expect(page.getByText(new RegExp(`${slot}\\s*[–-]`))).toBeVisible();
 
   // J2 — sign in as staff and confirm /admin shows the SAME start hour.
-  await page.goto("/login");
-  await page.getByRole("button", { name: /Staff/ }).click();
-  await expect(page).toHaveURL(/\/admin/);
+  await signInAsStaff(page);
 
   const row = page.locator(".pd-tr", { hasText: customer }).first();
   await expect(row).toBeVisible({ timeout: 25_000 });

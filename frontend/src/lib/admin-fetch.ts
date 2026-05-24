@@ -39,6 +39,18 @@ export function getCurrentStoreSlug(): string | null {
   return _provider ? _provider() : null;
 }
 
+// v10a staff-auth — 401 handler hook. `<StaffSessionProvider>` registers a
+// callback on mount that triggers its logout-and-redirect flow whenever
+// any admin API call returns 401 (typically: the session expired mid-use).
+// Kept as a module-level callback so adminFetch (a plain function) stays
+// React-free. The provider clears the registration on unmount.
+type On401Handler = () => void;
+let _on401: On401Handler | null = null;
+
+export function setAdminFetchOn401(handler: On401Handler | null): void {
+  _on401 = handler;
+}
+
 /**
  * Lower-level `fetch` shape used by the admin app.
  *
@@ -74,6 +86,16 @@ export async function adminFetch<T = unknown>(
       body = await response.json();
     } catch {
       // Non-JSON or empty error body — leave as null.
+    }
+    // 401 mid-session = the cookie expired or was cleared. Trigger the
+    // logout flow (registered by StaffSessionProvider) so the user lands
+    // on /staff/login with `?next=` instead of seeing a cryptic error.
+    if (response.status === 401 && _on401) {
+      try {
+        _on401();
+      } catch {
+        // Provider unmounted between registration and dispatch — fine.
+      }
     }
     throw new ApiError(response.status, body);
   }

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import "./playdesk.css";
-import { AuthProvider } from "@/lib/auth";
 import Nav from "@/components/Nav";
 
 // Font families the PlayDesk design system references via CSS variables
@@ -32,10 +31,8 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
       >
-        <AuthProvider>
-          <Nav />
-          <main className="pd-main">{children}</main>
-        </AuthProvider>
+        <Nav />
+        <main className="pd-main">{children}</main>
       </body>
     </html>
   );

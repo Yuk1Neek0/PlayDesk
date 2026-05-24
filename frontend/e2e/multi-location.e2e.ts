@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { signInAsStaff } from "./helpers";
+
 // v6 multi-location, task #163 — cross-store isolation invariant.
 //
 // The end-to-end payoff for the epic: switch stores in admin and see
@@ -39,9 +41,7 @@ test("cross-store isolation: book at North, only visible while admin is on North
   const northCustomer = `MultiLocNorth ${Date.now()}`;
 
   // ── Admin: sign in and verify the StoreSwitcher exposes both stores ──
-  await page.goto("/login");
-  await page.getByRole("button", { name: /Staff/ }).click();
-  await expect(page).toHaveURL(/\/admin/);
+  await signInAsStaff(page);
 
   const switcher = page.getByTestId("store-switcher");
   await expect(switcher).toBeVisible({ timeout: 10_000 });

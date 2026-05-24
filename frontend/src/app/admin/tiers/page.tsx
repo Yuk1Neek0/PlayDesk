@@ -14,7 +14,7 @@ import {
   listResources,
   type RewardTier,
 } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useStaffSession } from "@/lib/staff-session";
 import { useCurrentStore } from "@/lib/store-context";
 
 interface DraftTier {
@@ -42,10 +42,10 @@ export default function AdminTiersPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
-  const { user, ready: authReady } = useAuth();
+  const { user, ready: authReady } = useStaffSession();
   const router = useRouter();
   useEffect(() => {
-    if (authReady && user?.role !== "staff") router.replace("/login");
+    if (authReady && !user?.is_staff) router.replace("/staff/login");
   }, [authReady, user, router]);
 
   // v6 multi-location: prefer the active store from <StoreProvider>;
@@ -140,7 +140,7 @@ export default function AdminTiersPage() {
   }
 
   if (!authReady) return <div className="pd-admin" />;
-  if (user?.role !== "staff") return null;
+  if (!user?.is_staff) return null;
   if (loading) {
     return (
       <div className="pd-admin">

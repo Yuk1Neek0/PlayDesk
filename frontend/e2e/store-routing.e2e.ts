@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { signInAsStaff } from "./helpers";
+
 // v6 multi-location, task #162 — customer-facing store-scoped URLs.
 //
 // Verifies:
@@ -78,9 +80,7 @@ test("a booking made via /s/<slug>/book is associated with that store", async ({
   // mounts <StoreProvider>, which on first load picks the alphabetically-
   // first store (== flagship) so the booking is in scope by default.
   const adminPage = await context.newPage();
-  await adminPage.goto("/login");
-  await adminPage.getByRole("button", { name: /Staff/ }).click();
-  await expect(adminPage).toHaveURL(/\/admin/);
+  await signInAsStaff(adminPage);
 
   const row = adminPage.locator(".pd-tr", { hasText: customer }).first();
   await expect(row).toBeVisible({ timeout: 25_000 });
