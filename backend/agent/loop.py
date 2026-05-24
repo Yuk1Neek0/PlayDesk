@@ -216,6 +216,64 @@ def _execute_tools_parallel(
 
 
 # ---------------------------------------------------------------------------
+# Customer context — v11b
+# ---------------------------------------------------------------------------
+
+
+def _build_customer_context(conversation: Conversation) -> str | None:
+    """Build a `## Customer Context` system-prompt block for the agent.
+
+    Resolves ``conversation.customer_identifier`` against the store's
+    ``Customer`` table. For phone-based channels (sms / whatsapp / voice)
+    the identifier is the E.164 phone and we get a hit; for web-chat
+    with an anonymous identifier we don't, and the function returns
+    ``None`` so the prompt assembly skips the block entirely.
+
+    Tags considered customer-private (e.g. ``sms_opt_out``) are filtered
+    out — those are operational state, not personalization signal.
+    """
+    from core.memberships import current_balance, tier_for
+    from core.models import Customer
+
+    identifier = (conversation.customer_identifier or "").strip()
+    if not identifier:
+        return None
+    try:
+        customer = Customer.objects.filter(store=conversation.store, phone=identifier).first()
+    except Exception:
+        return None
+    if customer is None:
+        return None
+
+    _PRIVATE_TAGS = frozenset({"sms_opt_out", "whatsapp_opt_out", "do_not_contact"})
+    surfaced_tags = [t for t in (customer.tags or []) if t not in _PRIVATE_TAGS]
+
+    lines = ["\n\n## Customer Context", ""]
+    if customer.name:
+        lines.append(f"- Name: {customer.name}")
+    lines.append(f"- Total visits: {customer.total_visits}")
+    if customer.last_visit_at:
+        lines.append(f"- Last visit: {customer.last_visit_at:%Y-%m-%d}")
+    tier = tier_for(customer)
+    if tier is not None:
+        lines.append(f"- Loyalty tier: {tier.name}")
+        try:
+            balance = current_balance(customer)
+            lines.append(f"- Points balance: {balance}")
+        except Exception:
+            pass
+    if surfaced_tags:
+        lines.append(f"- Tags: {', '.join(surfaced_tags)}")
+    lines.append("")
+    lines.append(
+        "Use this to personalise tone (e.g. 'welcome back', name the customer if "
+        "natural) — never read these fields back verbatim to the customer, and "
+        "never use them to override a booking-flow decision."
+    )
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Public agent loop entry point
 # ---------------------------------------------------------------------------
 
@@ -285,7 +343,8 @@ class AgentLoop:
         # Detect the customer's language from this turn so the agent both
         # replies in it and retrieves KB chunks tagged with it.
         lang = detect_language(user_content)
-        system = self._build_system_prompt(lang)
+        customer_context = _build_customer_context(conversation)
+        system = self._build_system_prompt(lang, customer_context=customer_context)
         iteration = 0
         booking_id: int | None = None
         final_text = ""
@@ -458,8 +517,10 @@ class AgentLoop:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _build_system_prompt(self, lang: str) -> str:
+    def _build_system_prompt(self, lang: str, customer_context: str | None = None) -> str:
         prompt = SYSTEM_PROMPT + date_directive() + language_directive(lang)
+        if customer_context:
+            prompt += customer_context
         if not self._rag_chunks:
             return prompt
         chunks_text = "\n\n".join(
