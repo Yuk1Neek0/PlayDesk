@@ -188,15 +188,29 @@ def check_availability(inp: CheckAvailabilityInput) -> CheckAvailabilityOutput:
         )
 
         available_resources = _resources_free_in(candidates, requested_start, requested_end)
-        available_slots = [
-            TimeSlot(
-                start=requested_start,
-                end=requested_end,
-                resource_id=r.pk,
-                resource_name=r.name,
+
+        # v8 pricing-rules: surface the engine-computed price per slot so
+        # the agent quotes the real total (not unadjusted price_per_hour *
+        # hours). Anonymous customer here; booking-create re-runs the
+        # engine with the resolved customer's tier.
+        from pricing.engine import compute_quote as _compute_quote
+
+        available_slots: list[TimeSlot] = []
+        for r in available_resources:
+            try:
+                q = _compute_quote(r, requested_start, requested_end, customer=None)
+                price_str: str | None = str(q.total_amount)
+            except Exception:  # noqa: BLE001 — quote is best-effort metadata
+                price_str = None
+            available_slots.append(
+                TimeSlot(
+                    start=requested_start,
+                    end=requested_end,
+                    resource_id=r.pk,
+                    resource_name=r.name,
+                    quoted_price=price_str,
+                )
             )
-            for r in available_resources
-        ]
 
         # Conflict-aware suggestions: when nothing is free for the requested
         # window, offer up to two nearby windows that are actually bookable.
@@ -253,9 +267,26 @@ def get_resource_details(inp: GetResourceDetailsInput) -> GetResourceDetailsOutp
         if inp.store_id is not None:
             qs = qs.filter(store_id=inp.store_id)
 
+        # v8 pricing-rules: prefix the price label with "from " if any
+        # discount rule could fire for the resource's store, signalling
+        # to the agent that a customer-specific quote can go lower.
+        # Cheap one-query check; we don't need to know which rule.
+        from pricing.models import PricingRule
+
+        stores_with_discounts: set[int] = set()
+        if qs:
+            store_ids = list({r.store_id for r in qs})
+            stores_with_discounts = set(
+                PricingRule.objects.filter(store_id__in=store_ids, enabled=True).values_list(
+                    "store_id", flat=True
+                )
+            )
+
         resources = []
         for r in qs:
             games = list(r.game_menu.values_list("name", flat=True))
+            prefix = "from " if r.store_id in stores_with_discounts else ""
+            display_price_text = f"{prefix}${int(r.price_per_hour)}/hr"
             resources.append(
                 ResourceDetail(
                     resource_id=r.pk,
@@ -265,6 +296,7 @@ def get_resource_details(inp: GetResourceDetailsInput) -> GetResourceDetailsOutp
                     price_per_hour=float(r.price_per_hour),
                     metadata=r.metadata,
                     games=games,
+                    display_price_text=display_price_text,
                 )
             )
 
