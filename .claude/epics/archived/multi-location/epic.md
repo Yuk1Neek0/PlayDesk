@@ -1,9 +1,9 @@
 ---
 name: multi-location
-status: backlog
+status: completed
 created: 2026-05-24T02:12:13Z
-updated: 2026-05-24T02:17:33Z
-progress: 0%
+updated: 2026-05-24T03:23:53Z
+progress: 100%
 prd: .claude/prds/multi-location.md
 github: https://github.com/Yuk1Neek0/PlayDesk/issues/157
 ---
