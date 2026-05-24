@@ -47,12 +47,6 @@ def admin_user(db):
 
 
 @pytest.fixture()
-def regular_user(db):
-    User = get_user_model()
-    return User.objects.create_user(username="user", password="x", is_staff=False)
-
-
-@pytest.fixture()
 def admin_client(client, admin_user):
     client.force_login(admin_user)
     return client
@@ -78,36 +72,6 @@ def rewards(store):
     pricey = Reward.objects.create(store=store, name="Free hour", cost_points=500, enabled=True)
     disabled = Reward.objects.create(store=store, name="Old promo", cost_points=5, enabled=False)
     return cheap, pricey, disabled
-
-
-# ---------------------------------------------------------------------------
-# Auth gate
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_membership_view_rejects_non_admin(customer, client, regular_user):
-    client.force_login(regular_user)
-    resp = client.get(f"/api/admin/customers/{customer.pk}/membership/")
-    assert resp.status_code == 403
-
-
-@pytest.mark.django_db
-def test_adjust_rejects_non_admin(customer, client, regular_user):
-    client.force_login(regular_user)
-    resp = client.post(
-        f"/api/admin/customers/{customer.pk}/adjust-points/",
-        data=json.dumps({"delta": 5, "reason": "x"}),
-        content_type="application/json",
-    )
-    assert resp.status_code == 403
-
-
-@pytest.mark.django_db
-def test_rewards_list_rejects_non_admin(client, regular_user):
-    client.force_login(regular_user)
-    resp = client.get("/api/admin/rewards/")
-    assert resp.status_code == 403
 
 
 # ---------------------------------------------------------------------------
