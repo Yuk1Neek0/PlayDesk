@@ -407,6 +407,11 @@ export interface QRWindowMetric {
   window_days: number;
 }
 
+export interface MonthlyMoneyMetric {
+  amount: string;
+  currency: string;
+}
+
 export interface BusinessMetricsPayload {
   bookings_today: BookingsTodayMetric;
   bookings_window: BookingsWindowMetric;
@@ -414,6 +419,10 @@ export interface BusinessMetricsPayload {
   new_customers_window: NewCustomersWindowMetric;
   outbound_24h: Outbound24hMetric;
   qr_window: QRWindowMetric;
+  // v9 billing-payments — month-to-date revenue + refunds from the
+  // Payment ledger (deposits + balances minus refunds).
+  revenue_mtd?: MonthlyMoneyMetric;
+  refunds_mtd?: MonthlyMoneyMetric;
 }
 
 export function adminGetBusinessMetrics(

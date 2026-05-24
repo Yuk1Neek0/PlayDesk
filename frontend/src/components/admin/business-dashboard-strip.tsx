@@ -131,6 +131,22 @@ export function BusinessDashboardStrip() {
         secondary={`${data.qr_window.scans} scans / ${data.qr_window.clicks} clicks · last ${data.qr_window.window_days} days`}
         href="/admin/qr"
       />
+      {data.revenue_mtd && (
+        <MetricCard
+          label="Revenue (MTD)"
+          value={`${data.revenue_mtd.currency} ${data.revenue_mtd.amount}`}
+          secondary="month to date"
+          href="/admin/payments"
+        />
+      )}
+      {data.refunds_mtd && (
+        <MetricCard
+          label="Refunds (MTD)"
+          value={`${data.refunds_mtd.currency} ${data.refunds_mtd.amount}`}
+          secondary="month to date"
+          href="/admin/payments?kind=refund"
+        />
+      )}
     </div>
   );
 }
