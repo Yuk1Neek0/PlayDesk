@@ -35,8 +35,12 @@ test("cohort counts chip toolbar is populated after the sweeper", async ({ page 
 
   // After seed_data runs the sweeper, the dormant chip carries a >=3
   // count (2 plain dormant + 1 opted-out dormant from the v11c fixture).
+  // The chip renders with "Dormant (0)" until the first /api/admin/customers
+  // call returns cohort_counts, so wait for the populated label before
+  // sampling — `toContainText` polls and is the recommended pattern.
   const dormantBtn = toolbar.locator('[data-cohort-button="dormant"]');
   await expect(dormantBtn).toBeVisible();
+  await expect(dormantBtn).toContainText(/Dormant \([1-9]\d*\)/, { timeout: 15_000 });
   const dormantText = (await dormantBtn.textContent()) ?? "";
   const match = dormantText.match(/Dormant \((\d+)\)/);
   expect(match, `expected "Dormant (N)" label, got: ${dormantText}`).not.toBeNull();
