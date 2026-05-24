@@ -9,4 +9,6 @@ urlpatterns = [
     path("api/", include("api.urls")),
     # Agent — conversation creation + SSE streaming messages (agent app)
     path("api/", include("agent.urls")),
+    # Billing — Stripe Connect, webhook, charge-balance, refund (v9 epic)
+    path("api/", include("billing.urls")),
 ]

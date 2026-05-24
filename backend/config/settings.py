@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "agent",
     "campaigns",
     "outbound",
+    "billing",
 ]
 
 # ---------------------------------------------------------------------------
@@ -149,11 +150,21 @@ RAG_TOP_K = env.int("RAG_TOP_K", default=5)
 # Stripe — test-mode booking deposits (enhancements epic)
 # ---------------------------------------------------------------------------
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
+STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY", default="")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
+STRIPE_TEST_MODE = env.bool("STRIPE_TEST_MODE", default=True)
 STRIPE_SUCCESS_URL = env("STRIPE_SUCCESS_URL", default="http://localhost:3000/?payment=success")
 STRIPE_CANCEL_URL = env("STRIPE_CANCEL_URL", default="http://localhost:3000/?payment=cancelled")
 # How long an unpaid pending_payment hold survives before expire_holds reaps it.
 STRIPE_HOLD_MINUTES = env.int("STRIPE_HOLD_MINUTES", default=10)
+# Public URL of the admin frontend — onboarding return links and Checkout
+# success URLs are built from this. Defaults to the dev server.
+SITE_URL = env("SITE_URL", default="http://localhost:3000")
+
+# Email backend defaults to console in dev so receipt emails log instead
+# of erroring out without SMTP. Tests override to locmem via pytest-django.
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@playdesk.local")
 
 # ---------------------------------------------------------------------------
 # Twilio — SMS channel (multi-channel epic)
