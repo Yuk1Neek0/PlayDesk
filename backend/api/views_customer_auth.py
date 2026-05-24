@@ -12,9 +12,9 @@ via `core.middleware.sign_customer_session` so subsequent requests
 authenticate through `CustomerSessionMiddleware` setting
 `request.customer`.
 
-Rate limits via Django cache:
-  - request-code: 1 per phone per 60s + 5 per phone per hour.
-  - verify-code: 5 attempts per OTP row, then invalidate.
+The OTP business logic lives in `core.customer_auth` so the v11a
+rotating-checkin views can reuse the same rate limits, attempt cap,
+and SMS adapter without duplicating it here.
 
 Phone-existence is never leaked: an unknown phone still records a
 `CustomerLoginAttempt(success=False)` and returns 401, matching the
@@ -23,32 +23,22 @@ behaviour for a known phone with the wrong code.
 
 from __future__ import annotations
 
-import secrets
-from datetime import timedelta
-
 from django.conf import settings
-from django.core.cache import cache
-from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.customer_auth import (
+    do_request_code,
+    do_verify_code,
+    mark_otp_used,
+)
 from core.middleware import (
     CUSTOMER_COOKIE_MAX_AGE,
     CUSTOMER_COOKIE_NAME,
     sign_customer_session,
 )
-from core.models import Customer, CustomerLoginAttempt, CustomerOTP, Store
-
-OTP_TTL_MINUTES = 10
-OTP_MAX_ATTEMPTS = 5
-RATE_LIMIT_PER_MINUTE = 1
-RATE_LIMIT_PER_HOUR = 5
-
-
-def _generate_code() -> str:
-    """Six random digits — secrets.choice keeps them auth-grade unpredictable."""
-    return "".join(secrets.choice("0123456789") for _ in range(6))
+from core.models import Customer, Store
 
 
 def _client_ip(request) -> str:
@@ -111,54 +101,16 @@ class RequestCodeView(APIView):
             request.query_params.get("test_mode") or request.GET.get("test_mode")
         )
 
-        # Per-phone+store rate limits. cache.add returns False when the
-        # key already exists, so the first request seeds it and a second
-        # within the window bounces.
-        if not test_mode:
-            key_minute = f"otp:req:{store.id}:{phone}:1m"
-            key_hour = f"otp:req:{store.id}:{phone}:1h"
-            if not cache.add(key_minute, 1, timeout=60):
-                return Response(
-                    {"detail": "Too many requests. Please wait 60 seconds."},
-                    status=status.HTTP_429_TOO_MANY_REQUESTS,
-                )
-            # Hourly count via incr — defaults to 1 on first call.
-            hour_count = cache.get(key_hour, 0)
-            if hour_count >= RATE_LIMIT_PER_HOUR:
-                return Response(
-                    {"detail": "Too many requests. Please try again later."},
-                    status=status.HTTP_429_TOO_MANY_REQUESTS,
-                )
-            cache.set(key_hour, hour_count + 1, timeout=3600)
-
-        # Invalidate any prior un-used OTP for this phone+store.
-        CustomerOTP.objects.filter(phone=phone, store=store, used_at__isnull=True).update(
-            used_at=timezone.now()
-        )
-
-        otp = CustomerOTP.objects.create(
-            phone=phone,
-            store=store,
-            code=_generate_code(),
-            expires_at=timezone.now() + timedelta(minutes=OTP_TTL_MINUTES),
-        )
-
-        # Send via the SMS outbound adapter directly — there's no
-        # Customer row to drive `enqueue_message` (the phone may not be
-        # registered yet, and we never want to leak that signal).
-        body = f"Your PlayDesk verification code: {otp.code}. Expires in 10 minutes."
-        try:
-            from agent.channels.registry import get_outbound_adapter
-
-            adapter = get_outbound_adapter("sms")
-            adapter.send(phone, body)
-        except Exception:
-            # Adapter failure is non-fatal for the request flow — the OTP
-            # row exists. Operator can resend or check provider config.
-            import logging
-
-            logging.getLogger(__name__).exception(
-                "OTP send failed for phone=%s store=%s otp=%s", phone, slug, otp.id
+        otp, err = do_request_code(phone, store, test_mode=test_mode)
+        if err == "rate_limit_minute":
+            return Response(
+                {"detail": "Too many requests. Please wait 60 seconds."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        if err == "rate_limit_hour":
+            return Response(
+                {"detail": "Too many requests. Please try again later."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
 
         payload = {"request_id": otp.id}
@@ -192,46 +144,37 @@ class VerifyCodeView(APIView):
         except Store.DoesNotExist:
             return Response({"detail": "Unknown store."}, status=status.HTTP_404_NOT_FOUND)
 
-        otp = (
-            CustomerOTP.objects.filter(phone=phone, store=store, used_at__isnull=True)
-            .order_by("-created_at", "-id")
-            .first()
-        )
+        outcome, otp = do_verify_code(phone, code, store, ip=ip)
+        if outcome == "too_many_attempts":
+            return Response(
+                {"detail": "Invalid code or phone."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        if outcome != "ok":
+            return Response(
+                {"detail": "Invalid code or phone."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
 
-        def _fail(http_status: int = status.HTTP_401_UNAUTHORIZED) -> Response:
+        # Code matches — look up the customer. Unknown phone => 401
+        # (same as invalid code) so the response can't be used to
+        # enumerate registered phones. Log the success attempt was
+        # already written by do_verify_code; overwrite with a failure
+        # row so the audit trail stays accurate.
+        customer = Customer.objects.filter(phone=phone, store=store).first()
+        if customer is None:
+            from core.models import CustomerLoginAttempt
+
             CustomerLoginAttempt.objects.create(
                 phone=phone, store=store, success=False, ip_address=ip
             )
-            return Response({"detail": "Invalid code or phone."}, status=http_status)
+            return Response(
+                {"detail": "Invalid code or phone."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
 
-        if otp is None:
-            return _fail()
-
-        # Bump attempts up-front; >5 invalidates the row.
-        otp.attempts += 1
-        if otp.attempts > OTP_MAX_ATTEMPTS:
-            otp.used_at = timezone.now()
-            otp.save(update_fields=["attempts", "used_at"])
-            return _fail(http_status=status.HTTP_429_TOO_MANY_REQUESTS)
-        otp.save(update_fields=["attempts"])
-
-        if otp.expires_at < timezone.now():
-            return _fail()
-        if otp.code != code:
-            return _fail()
-
-        # Code matches — look up the customer. Unknown phone => 401 with
-        # success=False audit row, so the response can't be used to
-        # enumerate registered phones.
-        customer = Customer.objects.filter(phone=phone, store=store).first()
-        if customer is None:
-            return _fail()
-
-        # Mark the OTP used so it can't be replayed.
-        otp.used_at = timezone.now()
-        otp.save(update_fields=["used_at"])
-
-        CustomerLoginAttempt.objects.create(phone=phone, store=store, success=True, ip_address=ip)
+        # v7 consumes inline — the cookie is the credential from now on.
+        mark_otp_used(otp)
 
         token = sign_customer_session(customer.id, store.id)
         resp = Response(

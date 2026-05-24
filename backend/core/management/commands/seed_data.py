@@ -213,7 +213,65 @@ class Command(BaseCommand):
         # v10a staff-auth: seed a known staff login so developers and
         # Playwright can sign into /admin immediately after a fresh boot.
         self._seed_demo_staff_user()
+        # v11a rotating-checkin: seed a customer with two same-day bookings
+        # (different resources) so rotating-checkin.e2e.ts can drive the
+        # disambiguation flow + ensure there's at least one active rotating
+        # key for the door display.
+        self._seed_rotating_checkin_fixture()
         self.stdout.write(self.style.SUCCESS("Seed complete."))
+
+    def _seed_rotating_checkin_fixture(self) -> None:
+        """Seed a same-day double-booked customer + ensure a fresh rotating key.
+
+        Idempotent: re-running may add fresh bookings only if no upcoming
+        ones exist for the e2e customer, and minting only happens via the
+        services helper (no duplication on re-seed).
+        """
+        from checkin.services import get_active_key, mint_key
+
+        flagship = Store.objects.filter(slug="playdesk-flagship").first()
+        if flagship is None:
+            return
+
+        rc_customer, _ = Customer.objects.update_or_create(
+            store=flagship,
+            phone="+15557654321",
+            defaults={"name": "Rotating Checkin Customer"},
+        )
+
+        # Two resources at Flagship — distinct so the per-resource overlap
+        # constraint never fires. Skip if the customer already has
+        # upcoming bookings (idempotent re-seed).
+        upcoming = Booking.objects.filter(
+            customer=rc_customer,
+            start_time__gt=timezone.now() - timedelta(hours=1),
+        ).count()
+        if upcoming < 2:
+            resources = list(flagship.resources.order_by("id")[:2])
+            now = timezone.now()
+            # 30 min from now + 90 min from now — both inside the +/-2hr window.
+            for offset_min, res in zip([30, 90], resources):
+                start = now + timedelta(minutes=offset_min)
+                try:
+                    Booking.objects.create(
+                        resource=res,
+                        customer=rc_customer,
+                        customer_name=rc_customer.name,
+                        customer_phone=rc_customer.phone,
+                        start_time=start,
+                        end_time=start + timedelta(hours=1),
+                        status=BookingStatus.CONFIRMED,
+                    )
+                except Exception:
+                    # Overlap with another resource booking — skip silently
+                    # so re-seeding stays idempotent.
+                    pass
+
+        # Ensure a rotating key exists for both seeded stores so the admin
+        # display page works immediately after boot.
+        for store in Store.objects.all():
+            if get_active_key(store) is None:
+                mint_key(store)
 
     def _seed_demo_staff_user(self) -> None:
         """Idempotently create the `playdesk_staff` demo user (v10a).

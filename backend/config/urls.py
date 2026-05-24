@@ -13,4 +13,6 @@ urlpatterns = [
     path("api/", include("pricing.urls")),
     # Billing — Stripe Connect, webhook, charge-balance, refund (v9 epic)
     path("api/", include("billing.urls")),
+    # Rotating-checkin — /api/c-in/* + /api/admin/checkin/* (v11a epic)
+    path("api/", include("checkin.urls")),
 ]
