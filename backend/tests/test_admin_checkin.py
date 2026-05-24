@@ -8,7 +8,6 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
-from rest_framework.test import APIClient
 
 from core.models import Booking, BookingStatus, Customer, CustomerNote, Resource, Store
 
@@ -18,9 +17,12 @@ pytestmark = [
 ]
 
 
-@pytest.fixture()
-def client():
-    return APIClient()
+# Local `client` / `APIClient()` fixtures removed post-v10a: the root
+# conftest's `client` fixture is now pre-staff-logged-in via
+# `force_login(test_staff)`, which is exactly what these admin endpoint
+# tests need to clear `StaffOnlyMiddleware`. Tests that want a specific
+# staff user override the session with `client.force_login(my_user)`.
+# Tests that want an unauthenticated baseline use `anon_client`.
 
 
 @pytest.fixture()
@@ -121,9 +123,12 @@ def test_cross_store_access_returns_404(client, store, other_store):
 
 
 def test_authenticated_staff_attribution_on_note(client, resource, customer):
+    """A specific staff user logged in via `force_login` should be
+    attributed on the CustomerNote (replaces the default test_staff
+    session for the duration of this test)."""
     User = get_user_model()
     user = User.objects.create_user(username="staffer", password="x", is_staff=True)
-    client.force_authenticate(user=user)
+    client.force_login(user)
     booking = _make_booking(resource, customer, token="AUTH2345")
     resp = client.post(reverse("api:admin-booking-checkin", args=[booking.pk]))
     assert resp.status_code == 200
@@ -131,15 +136,18 @@ def test_authenticated_staff_attribution_on_note(client, resource, customer):
     assert note.author_id == user.pk
 
 
-def test_anonymous_attribution_falls_back_to_null_author(client, resource, customer):
-    """When v10a StaffOnlyMiddleware isn't enforced, the request is
-    anonymous — the note should still be created with author=None
-    (mirrors the memberships endpoints)."""
+def test_anonymous_request_blocked_by_middleware(anon_client, resource, customer):
+    """Post-v10a: anonymous requests to /api/admin/* return 401 from
+    StaffOnlyMiddleware before the view ever runs. Replaces the prior
+    `anonymous_falls_back_to_null_author` test, which encoded the
+    pre-v10a behaviour (open admin endpoints + null attribution)."""
     booking = _make_booking(resource, customer, token="ANON2345")
-    resp = client.post(reverse("api:admin-booking-checkin", args=[booking.pk]))
-    assert resp.status_code == 200
-    note = CustomerNote.objects.get(customer=customer)
-    assert note.author_id is None
+    resp = anon_client.post(reverse("api:admin-booking-checkin", args=[booking.pk]))
+    assert resp.status_code == 401
+    # And the booking is unchanged.
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.CONFIRMED
+    assert not CustomerNote.objects.filter(customer=customer).exists()
 
 
 def test_admin_bookings_list_checked_in_filter(client, resource, customer):
