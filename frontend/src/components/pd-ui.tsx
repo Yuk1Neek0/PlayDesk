@@ -167,21 +167,19 @@ export function ResourceIcon({
   return <TableIcon size={size} />;
 }
 
-// Stylized stripe placeholder with a faint icon — stands in for product art.
+// Photography isn't available yet, so the art slot is typography-forward.
+// Phase 2 commit 3: per-type colour band (room = warm gold, table = sage
+// green, console = blue-purple), larger floating icon, soft radial glow
+// instead of the old 1px hairline stripes. The data-type attribute lets
+// playdesk.css drive the type-specific colour from a single rule set.
 export function ResourceArt({ type }: { type: ResourceType }) {
-  const grad =
-    type === "room"
-      ? "linear-gradient(135deg, rgba(120,180,255,.08), rgba(180,90,255,.06))"
-      : type === "table"
-        ? "linear-gradient(135deg, rgba(200,160,90,.08), rgba(120,220,160,.06))"
-        : "linear-gradient(135deg, rgba(80,200,255,.08), rgba(180,90,255,.05))";
   return (
-    <div className="pd-art" style={{ background: grad }}>
-      <div className="pd-art-stripes" />
-      <div className="pd-art-icon" style={{ color: "var(--accent)" }}>
-        <ResourceIcon type={type} size={36} />
+    <div className="pd-art" data-type={type}>
+      <div className="pd-art-glow" />
+      <div className="pd-art-icon">
+        <ResourceIcon type={type} size={56} />
       </div>
-      <div className="pd-art-label">{type}</div>
+      <div className="pd-art-label">{RESOURCE_TYPE_LABEL[type]}</div>
     </div>
   );
 }
