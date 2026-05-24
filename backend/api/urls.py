@@ -52,7 +52,12 @@ from .views_memberships import (
     RewardViewSet,
 )
 from .views_outbound import OutboundMessageListView
-from .webhooks_twilio import twilio_sms_webhook, twilio_whatsapp_webhook
+from .webhooks_twilio import (
+    twilio_sms_webhook,
+    twilio_voice_status_callback,
+    twilio_voice_webhook,
+    twilio_whatsapp_webhook,
+)
 
 # DRF router for the rewards/tiers CRUD ViewSets.
 _router = DefaultRouter()
@@ -198,6 +203,14 @@ urlpatterns = [
         "webhooks/twilio/whatsapp/",
         twilio_whatsapp_webhook,
         name="twilio-whatsapp-webhook",
+    ),
+    # Twilio Voice webhook — v5 scaffold; static TwiML + phone Conversation row
+    path("webhooks/twilio/voice/", twilio_voice_webhook, name="twilio-voice-webhook"),
+    # Twilio Voice status callback — records missed/failed calls
+    path(
+        "webhooks/twilio/voice/status/",
+        twilio_voice_status_callback,
+        name="twilio-voice-status-callback",
     ),
 ]
 
