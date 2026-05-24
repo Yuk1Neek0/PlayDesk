@@ -891,3 +891,173 @@ body {
   .pd-stat-grid { grid-template-columns: 1fr 1fr; }
   .pd-page-title { font-size: 32px; }
 }
+
+/* —————— PAGE WRAPPERS —————— */
+/* Generic page wrappers used by the customer surfaces. .pd-page--booking
+   and the customer-account variant inherit margin/padding from .pd-main
+   above — these rules add the editorial breathing room and the brand-row
+   that pairs the logo with a secondary chip. */
+.pd-page { display: block; }
+.pd-page--booking { display: block; }
+.pd-page-head-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; margin-bottom: 14px;
+}
+
+/* —————— QR LANDING — account chip variant —————— */
+/* When the QR landing's footer also carries a "my account" link, switch
+   the foot to a two-cell row instead of the centered single-line variant. */
+.pd-qr-foot--with-account {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; text-transform: none; letter-spacing: 0;
+}
+.pd-qr-foot--with-account > span { color: var(--text-4); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* —————— CUSTOMER-PORTAL ROW / LIST / MODAL —————— */
+/* Account dashboard uses <ul class="pd-list"> with <li class="pd-row">
+   for upcoming bookings, history, and rewards. The row is a flex card
+   with a left-side text block and a right-side actions cluster. */
+.pd-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.pd-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 14px 16px;
+  background: var(--surface-2); border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  transition: border-color var(--t);
+}
+.pd-row:hover { border-color: var(--hairline-2); }
+.pd-row-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pd-row-title { font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+.pd-row-sub { font-size: 13px; color: var(--text-3); }
+.pd-row-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 560px) {
+  .pd-row { flex-direction: column; align-items: stretch; gap: 12px; }
+  .pd-row-actions { justify-content: flex-end; }
+}
+
+/* Status chips re-use the badge tones via the booking status string.
+   `confirmed` / `pending` / `cancelled` / `pending_payment` are the
+   four states the customer portal can render. */
+.pd-status-confirmed { color: var(--ok); border-color: var(--ok-border); background: var(--ok-soft); }
+.pd-status-pending { color: var(--warn); border-color: var(--warn-border); background: var(--warn-soft); }
+.pd-status-pending_payment { color: var(--warn); border-color: var(--warn-border); background: var(--warn-soft); }
+.pd-status-cancelled { color: var(--text-3); border-color: var(--hairline); background: var(--surface-2); }
+.pd-status-completed { color: var(--text-2); border-color: var(--hairline); background: var(--surface-2); }
+.pd-status-checked_in { color: var(--ok); border-color: var(--ok-border); background: var(--ok-soft); }
+
+/* Modal — a centered card on a dim overlay. Cancel + reschedule both
+   render through this single primitive. */
+.pd-modal {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  background: rgba(8, 7, 10, 0.62);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: pd-fade-in 200ms var(--ease) both;
+}
+.pd-modal-card {
+  width: 100%; max-width: 460px;
+  background: var(--surface); border: 1px solid var(--hairline-2);
+  border-radius: var(--r-lg); padding: 24px;
+  display: flex; flex-direction: column; gap: 14px;
+  animation: pd-fade-up 240ms var(--ease) both;
+}
+.pd-modal-card .pd-row-actions { justify-content: flex-end; margin-top: 4px; }
+
+/* —————— CHECK-IN FLOWS (token + rotating-key) —————— */
+/* Both /c/[token] and /c-in/?k=… render a single full-bleed centered
+   card. Editorial restraint: warm dark surface, no glow on the primary
+   button — the button is the only place the accent fires. */
+.pd-checkin-page {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px 16px;
+  margin: -32px -28px -120px;
+}
+.pd-checkin-card {
+  width: 100%; max-width: 460px;
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: var(--r-xl);
+  padding: 32px 28px;
+  display: flex; flex-direction: column; gap: 20px;
+  animation: pd-fade-up 380ms var(--ease) both;
+}
+.pd-checkin-head {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  text-align: center;
+}
+.pd-checkin-logo { max-height: 48px; width: auto; display: block; }
+.pd-checkin-store {
+  font-family: var(--font-display); font-weight: 700;
+  font-size: 18px; letter-spacing: -0.012em; color: var(--text);
+}
+.pd-checkin-body { display: flex; flex-direction: column; gap: 16px; }
+.pd-checkin-greeting {
+  font-family: var(--font-display); font-weight: 700;
+  font-size: clamp(26px, 5vw, 34px);
+  line-height: 1.1; letter-spacing: -0.02em;
+  color: var(--text);
+}
+.pd-checkin-context {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 14px 16px;
+  background: var(--surface-2); border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+}
+.pd-checkin-resource {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 16px; letter-spacing: -0.01em; color: var(--text);
+}
+.pd-checkin-time {
+  font-family: var(--font-mono); font-size: 13px; color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.pd-checkin-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 16px 22px; border-radius: var(--r-md);
+  font-size: 16px; font-weight: 600;
+  background: var(--accent); color: var(--text-on-accent);
+  border: 1px solid transparent;
+  box-shadow: var(--accent-glow);
+  transition: transform var(--t-fast), filter var(--t), box-shadow var(--t);
+}
+.pd-checkin-btn:hover:not(:disabled) { filter: brightness(1.06); }
+.pd-checkin-btn:active { transform: translateY(1px); }
+.pd-checkin-btn:disabled { background: var(--surface-2); color: var(--text-3); box-shadow: none; cursor: not-allowed; }
+.pd-checkin-status {
+  padding: 14px 16px; border-radius: var(--r-md);
+  font-size: 14px; line-height: 1.45;
+  border: 1px solid var(--hairline);
+  background: var(--surface-2); color: var(--text-2);
+}
+.pd-checkin-status--checked_in { color: var(--ok); border-color: var(--ok-border); background: var(--ok-soft); }
+.pd-checkin-status--completed { color: var(--text-2); border-color: var(--hairline); background: var(--surface-2); }
+.pd-checkin-status--cancelled { color: var(--danger); border-color: var(--danger-border); background: var(--danger-soft); }
+.pd-checkin-status--pending_payment { color: var(--warn); border-color: var(--warn-border); background: var(--warn-soft); }
+.pd-checkin-status--walkin { color: var(--text-2); }
+.pd-checkin-error {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border-radius: var(--r-sm);
+  background: var(--danger-soft); border: 1px solid var(--danger-border);
+  color: var(--danger); font-size: 13px;
+}
+.pd-checkin-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.pd-checkin-list-item {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; padding: 12px 14px;
+  background: var(--surface-2); border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+}
+@media (max-width: 480px) {
+  .pd-checkin-page { padding: 16px 12px; }
+  .pd-checkin-card { padding: 24px 20px; }
+  .pd-checkin-list-item { flex-direction: column; align-items: stretch; }
+  .pd-checkin-list-item .pd-btn { width: 100%; }
+}
