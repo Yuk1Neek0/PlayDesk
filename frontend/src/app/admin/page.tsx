@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/lib/auth";
+import { BusinessDashboardStrip } from "@/components/admin/business-dashboard-strip";
 import {
   Icon,
   ResourceIcon,
@@ -207,6 +208,7 @@ export default function AdminPage() {
 
   return (
     <div className="pd-admin">
+      <BusinessDashboardStrip />
       <header className="pd-admin-head">
         <div>
           <div className="pd-eyebrow">Staff dashboard</div>

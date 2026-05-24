@@ -584,6 +584,26 @@ body {
 
 .pd-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 @media (max-width: 880px) { .pd-stat-grid { grid-template-columns: repeat(2, 1fr); } }
+/* Business-dashboard strip — six metric cards. Three columns at mid widths,
+   two at narrow viewports. Reuses .pd-stat for the card itself. */
+.pd-stat-grid--6 { grid-template-columns: repeat(6, 1fr); }
+@media (max-width: 1200px) { .pd-stat-grid--6 { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 720px) { .pd-stat-grid--6 { grid-template-columns: repeat(2, 1fr); } }
+.pd-stat-link { color: inherit; text-decoration: none; }
+.pd-stat-link:hover .pd-stat { border-color: var(--accent); }
+.pd-skeleton {
+  background: linear-gradient(90deg, var(--hairline) 25%, var(--hairline-2) 50%, var(--hairline) 75%);
+  background-size: 200% 100%;
+  animation: pd-skeleton-shimmer 1.4s linear infinite;
+  min-height: 88px;
+}
+@keyframes pd-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pd-skeleton { animation: none; }
+}
 .pd-stat {
   background: var(--surface); border: 1px solid var(--hairline);
   border-radius: var(--r-md); padding: 18px;
