@@ -321,10 +321,14 @@ class Command(BaseCommand):
         # re-runs, and we want fresh confirmed rows on the next seed.
         resource = flagship.resources.order_by("id").first()
         if resource is not None:
-            existing_upcoming = Booking.objects.filter(
-                customer=e2e_customer,
-                start_time__gt=timezone.now(),
-            ).exclude(status=BookingStatus.CANCELLED).count()
+            existing_upcoming = (
+                Booking.objects.filter(
+                    customer=e2e_customer,
+                    start_time__gt=timezone.now(),
+                )
+                .exclude(status=BookingStatus.CANCELLED)
+                .count()
+            )
             if existing_upcoming < 2:
                 now = timezone.now()
                 for offset_h, length_h in [(48, 2), (96, 2)]:

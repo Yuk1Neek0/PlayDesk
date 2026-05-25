@@ -40,6 +40,25 @@ TIMEOUT = 60.0
 @pytest.fixture(scope="session")
 def client():
     with httpx.Client(base_url=BASE, timeout=TIMEOUT) as c:
+        # v10a: `/api/admin/*` is gated by StaffOnlyMiddleware. Log in
+        # once as the seeded demo staff user so `test_admin_endpoints_*`
+        # carries a `sessionid` cookie on subsequent requests. Login is
+        # CSRF-exempt (see v10a task #190); the cookie persists for the
+        # life of this httpx.Client. Public endpoints don't care about
+        # the extra cookie, so this is harmless for the non-admin tests.
+        try:
+            r = c.post(
+                "/api/staff/login/",
+                json={
+                    "username": "playdesk_staff",
+                    "password": "playdesk_staff_demo_pw",
+                },
+            )
+            r.raise_for_status()
+        except Exception:
+            # Seed not run yet — public tests still pass; admin tests
+            # will surface the failure with a clear assertion message.
+            pass
         yield c
 
 
