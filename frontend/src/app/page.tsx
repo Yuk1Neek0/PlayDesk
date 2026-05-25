@@ -8,6 +8,9 @@
 //   3. Talk to front desk   → /chat
 //   4. Staff sign in        → /staff/login
 //
+// Plus a 5th client-side conditional entry rendered by `<StaffHubExtras />`:
+//   5. Door QR              → /admin/settings/checkin/display  (staff only)
+//
 // The default store's slug + brand are still fetched server-side from
 // `/api/public/default-store/` and `/api/public/store-brand/` so printed
 // QR cards or bookmarks pointing at `/` keep working — they just land on
@@ -17,6 +20,7 @@
 
 import Link from "next/link";
 
+import StaffHubExtras from "./StaffHubExtras";
 import { Icon } from "@/components/pd-ui";
 import { fetchStoreBrand, type StoreBrand } from "@/lib/store-brand";
 
@@ -125,6 +129,7 @@ export default async function HubPage() {
             </span>
           </Link>
         ))}
+        <StaffHubExtras />
       </section>
     </div>
   );

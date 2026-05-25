@@ -10,9 +10,19 @@
 // automatically reflect the current store while a staff user is on
 // /admin/*.
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
 import { StoreProvider } from "@/lib/store-context";
 import { StaffSessionProvider, useStaffSession } from "@/lib/staff-session";
 import { StoreSwitcher } from "@/components/admin/store-switcher";
+
+// Settings entries shown as chip links in the admin sub-header. Adding
+// more = append here; the active-state styling is automatic via pathname.
+const SETTINGS_LINKS: { href: string; label: string }[] = [
+  { href: "/admin/settings/checkin", label: "Door QR" },
+  { href: "/admin/settings/payments", label: "Payments" },
+];
 
 export default function AdminLayout({
   children,
@@ -53,6 +63,7 @@ function AdminGate({ children }: { children: React.ReactNode }) {
 
 function AdminSubHeader() {
   const { user, logout } = useStaffSession();
+  const pathname = usePathname();
   return (
     <div
       className="pd-admin-subheader"
@@ -62,6 +73,7 @@ function AdminSubHeader() {
         alignItems: "center",
         gap: 12,
         padding: "8px 24px 0",
+        flexWrap: "wrap",
       }}
     >
       {user && (
@@ -73,6 +85,19 @@ function AdminSubHeader() {
           Signed in as <strong>{user.username}</strong>
         </span>
       )}
+      {SETTINGS_LINKS.map(({ href, label }) => {
+        const active = pathname === href || pathname?.startsWith(href + "/");
+        return (
+          <Link
+            key={href}
+            href={href}
+            className={`pd-chip pd-chip--ghost ${active ? "is-active" : ""}`}
+            style={{ fontSize: 12 }}
+          >
+            {label}
+          </Link>
+        );
+      })}
       <StoreSwitcher />
       {user && (
         <button
