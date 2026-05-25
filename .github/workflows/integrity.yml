@@ -88,7 +88,12 @@ jobs:
           EOF
 
       - name: Boot the stack
-        run: docker compose up -d --build
+        # `-f docker-compose.yml` explicitly: skip docker-compose.override.yml
+        # which is a dev-only hot-reload override (bind-mounts ./frontend +
+        # runs `next dev`). CI must always exercise the baked production
+        # image, and the override's bind-mount creates a root-owned
+        # node_modules dir that breaks the Playwright job's `npm ci`.
+        run: docker compose -f docker-compose.yml up -d --build
 
       - name: Wait for the stack to be ready
         run: |
