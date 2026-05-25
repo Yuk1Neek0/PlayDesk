@@ -1,0 +1,39 @@
+# docker-compose.override.yml — auto-merged into docker-compose.yml when
+# Compose runs WITHOUT `-f` flags (i.e. plain `docker compose up`). CI
+# uses `-f docker-compose.yml` explicitly, so this override never reaches
+# the production build pipeline.
+#
+# Purpose: turn the frontend container into a hot-reload dev server
+# instead of the baked production image. Edit a .tsx file, see the
+# change in the browser in < 2s — no `docker compose build` round-trip.
+#
+# Mechanism:
+#   - `build.target: deps` stops at the Dockerfile's `deps` stage so
+#     we get the installed node_modules without the production build.
+#   - Bind-mount `./frontend → /app` so the source the dev server runs
+#     is the host source.
+#   - Anonymous volumes for `/app/node_modules` + `/app/.next` so the
+#     container's node_modules (Linux-built, may differ from host's
+#     Windows-built) isn't shadowed by the host bind-mount.
+#   - `command: npm run dev` swaps `next start` for `next dev`.
+#
+# To opt out (run the production image locally just like CI):
+#   docker compose -f docker-compose.yml up
+#
+# To wipe the dev container's node_modules cache (rare; after package.json change):
+#   docker compose down -v frontend && docker compose up -d frontend
+services:
+  frontend:
+    build:
+      target: deps
+    command: npm run dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Faster FS watch on Windows / WSL bind-mounts. Without this,
+      # Next.js polls files instead of getting native fsevents, which
+      # works but uses more CPU.
+      WATCHPACK_POLLING: "true"
