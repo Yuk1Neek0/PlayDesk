@@ -39,13 +39,24 @@ TIMEOUT = 60.0
 
 @pytest.fixture(scope="session")
 def client():
+    # Anonymous client for public endpoints. DO NOT log in here — once
+    # a session cookie exists, DRF's SessionAuthentication kicks in and
+    # CsrfViewMiddleware starts rejecting POSTs without an X-CSRFToken
+    # header, which would break every POST /api/bookings/ /conversations/
+    # in this file. Admin-endpoint tests use `staff_client` instead.
     with httpx.Client(base_url=BASE, timeout=TIMEOUT) as c:
-        # v10a: `/api/admin/*` is gated by StaffOnlyMiddleware. Log in
-        # once as the seeded demo staff user so `test_admin_endpoints_*`
-        # carries a `sessionid` cookie on subsequent requests. Login is
-        # CSRF-exempt (see v10a task #190); the cookie persists for the
-        # life of this httpx.Client. Public endpoints don't care about
-        # the extra cookie, so this is harmless for the non-admin tests.
+        yield c
+
+
+@pytest.fixture(scope="session")
+def staff_client():
+    # Authenticated client for `/api/admin/*` tests (v10a gates those
+    # via StaffOnlyMiddleware). Logs in once as the seeded demo staff
+    # user and mirrors Django's `csrftoken` cookie into `X-CSRFToken` on
+    # every subsequent write (Django enforces CSRF whenever a session
+    # is authenticated). Restricted to admin reads/writes; do NOT use
+    # for public-endpoint tests — see the `client` fixture comment.
+    with httpx.Client(base_url=BASE, timeout=TIMEOUT) as c:
         try:
             r = c.post(
                 "/api/staff/login/",
@@ -56,9 +67,11 @@ def client():
             )
             r.raise_for_status()
         except Exception:
-            # Seed not run yet — public tests still pass; admin tests
-            # will surface the failure with a clear assertion message.
+            # Seed not run yet; admin tests will surface a clear 401.
             pass
+        token = c.cookies.get("csrftoken")
+        if token:
+            c.headers.update({"X-CSRFToken": token})
         yield c
 
 
@@ -194,14 +207,14 @@ def test_overlapping_booking_rejected(client, resources):
 # ---------------------------------------------------------------------------
 
 
-def test_admin_endpoints_sorted_desc(client):
+def test_admin_endpoints_sorted_desc(staff_client):
     """Admin bookings and conversations load and are newest-first."""
-    rb = client.get("/api/admin/bookings/")
+    rb = staff_client.get("/api/admin/bookings/")
     assert rb.status_code == 200, rb.text
     booking_times = [b["created_at"] for b in rb.json()["results"]]
     assert booking_times == sorted(booking_times, reverse=True), "bookings not created_at desc"
 
-    rc = client.get("/api/admin/conversations/")
+    rc = staff_client.get("/api/admin/conversations/")
     assert rc.status_code == 200, rc.text
 
 
