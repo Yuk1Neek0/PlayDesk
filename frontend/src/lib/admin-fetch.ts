@@ -113,12 +113,16 @@ export async function adminFetch<T = unknown>(
     // 401 mid-session = the cookie expired or was cleared. Trigger the
     // logout flow (registered by StaffSessionProvider) so the user lands
     // on /staff/login with `?next=` instead of seeing a cryptic error.
+    // When a handler is registered we also hold the Promise unresolved so
+    // the caller's `.catch` never runs — otherwise pages paint "Couldn't
+    // reach the backend" over the in-flight redirect.
     if (response.status === 401 && _on401) {
       try {
         _on401();
       } catch {
         // Provider unmounted between registration and dispatch — fine.
       }
+      return new Promise<T>(() => {});
     }
     throw new ApiError(response.status, body);
   }

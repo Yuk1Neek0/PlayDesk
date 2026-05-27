@@ -57,7 +57,7 @@ export default function Nav() {
         <button className="pd-icon-btn" aria-label="Search">
           <Icon.search size={16} />
         </button>
-        <Link className="pd-btn pd-btn--ghost pd-btn--sm" href="/staff/login">
+        <Link className="pd-btn pd-btn--ghost pd-btn--sm" href="/admin">
           Sign in
         </Link>
       </div>

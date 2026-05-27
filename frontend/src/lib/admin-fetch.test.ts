@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { adminFetch, setStoreSlugProvider } from "./admin-fetch";
+import { adminFetch, setAdminFetchOn401, setStoreSlugProvider } from "./admin-fetch";
 import { ApiError } from "./api";
 
 const fetchMock = vi.fn();
@@ -9,10 +9,12 @@ beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   setStoreSlugProvider(null);
+  setAdminFetchOn401(null);
 });
 
 afterEach(() => {
   setStoreSlugProvider(null);
+  setAdminFetchOn401(null);
   vi.unstubAllGlobals();
 });
 
@@ -81,6 +83,31 @@ describe("adminFetch", () => {
 
   it("ApiError is exported and an instance of Error", () => {
     expect(new ApiError(500, null)).toBeInstanceOf(Error);
+  });
+
+  it("on 401 with a handler registered, calls the handler and holds the promise", async () => {
+    const handler = vi.fn();
+    setAdminFetchOn401(handler);
+    fetchMock.mockResolvedValue(jsonResponse({ detail: "auth" }, 401));
+
+    const pending = adminFetch("/api/admin/bookings/");
+    const sentinel = Symbol("not-settled");
+    const winner = await Promise.race([
+      pending,
+      new Promise((resolve) => setTimeout(() => resolve(sentinel), 20)),
+    ]);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(winner).toBe(sentinel);
+  });
+
+  it("still throws ApiError on 401 when no handler is registered", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ detail: "auth" }, 401));
+
+    await expect(adminFetch("/api/admin/bookings/")).rejects.toMatchObject({
+      name: "ApiError",
+      status: 401,
+    });
   });
 });
 
