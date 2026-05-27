@@ -19,6 +19,7 @@ const DEFAULT_BRAND_LOC = "Downtown · Toronto";
 const LINKS: { href: string; label: string }[] = [
   { href: "/", label: "Book" },
   { href: "/chat", label: "AI Front Desk" },
+  { href: "/checkin", label: "Check in" },
 ];
 
 export default function Nav() {
