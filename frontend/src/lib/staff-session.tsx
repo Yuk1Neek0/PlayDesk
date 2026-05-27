@@ -79,13 +79,22 @@ export function StaffSessionProvider({ children, initialUser }: ProviderProps) {
   // Stable redirect-on-401 helper. We only redirect when the current
   // page is an /admin/* route; the login page itself must NOT redirect
   // (that would infinite-loop), and customer pages aren't our problem.
+  //
+  // Uses a hard browser navigation (`window.location.replace`) rather than
+  // the Next.js router so the redirect happens even if React state is
+  // mid-update or the tab is in a weird HMR state in dev. The downside
+  // (full page reload) is fine here — we're leaving the admin app anyway.
   const redirectToLogin = useCallback(
     (currentPath: string | null) => {
       if (!currentPath) return;
       if (!currentPath.startsWith("/admin")) return;
       if (currentPath.startsWith(LOGIN_PATH)) return;
       const next = encodeURIComponent(currentPath);
-      router.replace(`${LOGIN_PATH}?next=${next}`);
+      if (typeof window !== "undefined") {
+        window.location.replace(`${LOGIN_PATH}?next=${next}`);
+      } else {
+        router.replace(`${LOGIN_PATH}?next=${next}`);
+      }
     },
     [router],
   );

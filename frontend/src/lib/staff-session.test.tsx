@@ -39,11 +39,27 @@ function Probe() {
   );
 }
 
+// `window.location.replace` is the source of truth for the /admin redirect
+// (a hard browser nav so the redirect can't be swallowed by HMR/state races).
+// jsdom's default `window.location` is read-only, so we replace `.replace`
+// per test via Object.defineProperty.
+function stubWindowLocationReplace(): ReturnType<typeof vi.fn> {
+  const spy = vi.fn();
+  Object.defineProperty(window, "location", {
+    value: { ...window.location, replace: spy, pathname: _pathname },
+    writable: true,
+  });
+  return spy;
+}
+
 describe("StaffSessionProvider", () => {
+  let locationReplace: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
     routerMock.replace.mockClear();
     routerMock.push.mockClear();
     _pathname = "/admin/customers";
+    locationReplace = stubWindowLocationReplace();
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -64,6 +80,7 @@ describe("StaffSessionProvider", () => {
     await waitFor(() => expect(screen.getByTestId("ready").textContent).toBe("true"));
     expect(screen.getByTestId("user").textContent).toBe("alice");
     expect(routerMock.replace).not.toHaveBeenCalled();
+    expect(locationReplace).not.toHaveBeenCalled();
   });
 
   it("on /me 401 with pathname /admin/customers, redirects with ?next=", async () => {
@@ -79,7 +96,7 @@ describe("StaffSessionProvider", () => {
     );
     await waitFor(() => expect(screen.getByTestId("ready").textContent).toBe("true"));
     expect(screen.getByTestId("user").textContent).toBe("anon");
-    expect(routerMock.replace).toHaveBeenCalledWith(
+    expect(locationReplace).toHaveBeenCalledWith(
       "/staff/login?next=%2Fadmin%2Fcustomers",
     );
   });
@@ -96,6 +113,7 @@ describe("StaffSessionProvider", () => {
       </StaffSessionProvider>,
     );
     await waitFor(() => expect(screen.getByTestId("ready").textContent).toBe("true"));
+    expect(locationReplace).not.toHaveBeenCalled();
     expect(routerMock.replace).not.toHaveBeenCalled();
   });
 
@@ -111,6 +129,7 @@ describe("StaffSessionProvider", () => {
       </StaffSessionProvider>,
     );
     await waitFor(() => expect(screen.getByTestId("ready").textContent).toBe("true"));
+    expect(locationReplace).not.toHaveBeenCalled();
     expect(routerMock.replace).not.toHaveBeenCalled();
   });
 
