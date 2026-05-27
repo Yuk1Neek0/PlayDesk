@@ -701,7 +701,7 @@ function ResourceCard({
   const titles = r.metadata.titles ?? r.metadata.featured ?? [];
   return (
     <button className={`pd-rcard ${selected ? "is-selected" : ""}`} onClick={onSelect}>
-      <ResourceArt type={r.type} />
+      <ResourceArt type={r.type} name={r.name} />
       <div className="pd-rcard-body">
         <div className="pd-rcard-row">
           <div className="pd-rcard-name">{r.name}</div>

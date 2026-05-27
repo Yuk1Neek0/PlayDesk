@@ -167,18 +167,55 @@ export function ResourceIcon({
   return <TableIcon size={size} />;
 }
 
-// Photography isn't available yet, so the art slot is typography-forward.
+// Resolve the cover image for a resource card. `console` rotates between
+// PS5-1, PS5-2, and Switch based on the resource name; `room` and `table`
+// each have a single photo. Falls back to `null` if no image fits, in
+// which case ResourceArt renders the typography-forward icon variant.
+function resourceImage(type: ResourceType, name?: string): string | null {
+  const lower = name?.toLowerCase() ?? "";
+  if (type === "console") {
+    if (lower.includes("switch")) return "/images/booking/switch.jpg";
+    // "PS5 Station 1" / "North PS5 Station 1" → ps5-1, "Station 2" → ps5-2,
+    // anything else PS5-shaped → ps5-1 as a sensible default.
+    if (lower.includes("2")) return "/images/booking/ps5-2.webp";
+    return "/images/booking/ps5-1.jpg";
+  }
+  if (type === "room") return "/images/booking/room.webp";
+  if (type === "table") return "/images/booking/table.jpg";
+  return null;
+}
+
 // Phase 2 commit 3: per-type colour band (room = warm gold, table = sage
 // green, console = blue-purple), larger floating icon, soft radial glow
 // instead of the old 1px hairline stripes. The data-type attribute lets
 // playdesk.css drive the type-specific colour from a single rule set.
-export function ResourceArt({ type }: { type: ResourceType }) {
+// Photography (Phase 3): when a `name` matches one of the seeded resource
+// patterns, render the photo over the colour band; otherwise fall back to
+// the icon variant so any not-yet-photographed type still looks intentional.
+export function ResourceArt({
+  type,
+  name,
+}: {
+  type: ResourceType;
+  name?: string;
+}) {
+  const src = resourceImage(type, name);
   return (
     <div className="pd-art" data-type={type}>
       <div className="pd-art-glow" />
-      <div className="pd-art-icon">
-        <ResourceIcon type={type} size={56} />
-      </div>
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          className="pd-art-photo"
+          src={src}
+          alt={`${RESOURCE_TYPE_LABEL[type]} — ${name ?? ""}`.trim()}
+          loading="lazy"
+        />
+      ) : (
+        <div className="pd-art-icon">
+          <ResourceIcon type={type} size={56} />
+        </div>
+      )}
       <div className="pd-art-label">{RESOURCE_TYPE_LABEL[type]}</div>
     </div>
   );
