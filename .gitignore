@@ -1,6 +1,9 @@
 # Claude Code — personal/local overrides (not shared)
 .claude/settings.local.json
 
+# Local-only product / dev plan (kept out of the public repo)
+cosready_demo_dev_plan.md
+
 # Environment
 .env
 .env.local

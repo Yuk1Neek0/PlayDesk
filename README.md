@@ -170,7 +170,6 @@ Twilio SMS, Twilio WhatsApp, Twilio Voice (TwiML), and the outbound pipeline all
 | `knowledge-base/` | RAG source content (English + 中文) |
 | `docker-compose.yml` | `db` (pgvector), `backend`, `frontend` (with a dev override for hot-reload) |
 | `.claude/` | CCPM workflow — PRDs, epics, tasks (archived per release under `archived/`) |
-| `cosready_demo_dev_plan.md` | The product & development plan |
 
 ---
 
@@ -180,7 +179,7 @@ PlayDesk is built with the **CCPM** workflow (`.claude/skills/ccpm`): every feat
 
 If you're new to the codebase, the shortest path to context is:
 
-1. Read `cosready_demo_dev_plan.md` for the product story.
+1. Skim `.claude/prds/` for the per-area product briefs (foundation, backend-core, frontend, enhancements, verification).
 2. Skim `.claude/epics/archived/` — each folder is a shipped feature with its tasks.
 3. Read the frozen contracts in `docs/contracts/`.
 
